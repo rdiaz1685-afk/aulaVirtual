@@ -3,9 +3,17 @@ import { GoogleGenAI } from "@google/genai";
 import { UserPreferences, Course, AuthorizedStudent, Lesson, Unit } from "./types";
 import { SKELETON_PROMPT, SKELETON_SCHEMA, UNIT_CONTENT_PROMPT, UNIT_CONTENT_SCHEMA } from "./constants";
 
+const getApiKey = () => {
+  // Intenta obtener la API_KEY de las variables de entorno de Vercel/Vite
+  const key = process.env.API_KEY;
+  if (!key) {
+    console.warn("⚠️ API_KEY no detectada. Asegúrate de configurarla en Settings > Environment Variables en Vercel.");
+  }
+  return key || '';
+};
+
 function cleanAndParseJson(text: string): any {
   try {
-    // Intentar extraer JSON puro si viene con markdown
     let cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const startBrace = cleanText.indexOf('{');
     const startBracket = cleanText.indexOf('[');
@@ -44,7 +52,12 @@ function parseStudentList(raw: string): AuthorizedStudent[] {
 }
 
 export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Course> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("Error de Configuración: Falta la API_KEY en Vercel. Por favor, agrégala en los ajustes del proyecto.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   try {
     const response = await ai.models.generateContent({
@@ -57,8 +70,7 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
     });
 
     const raw = cleanAndParseJson(response.text || "{}");
-    
-    if (!raw || !raw.units) throw new Error("Datos insuficientes");
+    if (!raw || !raw.units) throw new Error("Datos insuficientes de la IA");
 
     return {
       id: `course_${Date.now()}`,
@@ -77,19 +89,16 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
       studentList: parseStudentList(prefs.studentListRaw || "")
     };
   } catch (err) {
-    console.error("Fallo en IA, generando estructura de emergencia...");
-    // ESTRUCTURA DE RESPALDO (FALLBACK)
+    console.error("Fallo en IA:", err);
     return {
       id: `course_fb_${Date.now()}`,
       createdAt: Date.now(),
-      title: prefs.topic || "Nueva Materia",
+      title: prefs.topic || "Nueva Materia (Modo Seguro)",
       duration: "64 horas",
-      subjectCode: "TEC-TEMP",
-      description: "Estructura generada por error de conexión. Puedes construir las unidades manualmente.",
+      subjectCode: "TEC-ERROR",
+      description: "Hubo un problema con la IA, pero hemos generado este temario de emergencia para que puedas continuar.",
       units: [
-        { id: 'u0', title: 'Unidad 1: Fundamentos Generales', summary: 'Introducción y conceptos básicos.', lessons: [] },
-        { id: 'u1', title: 'Unidad 2: Desarrollo y Aplicación', summary: 'Casos prácticos y herramientas.', lessons: [] },
-        { id: 'u2', title: 'Unidad 3: Evaluación y Resultados', summary: 'Cierre de curso y proyectos.', lessons: [] }
+        { id: 'u0', title: 'Unidad 1: Introducción General', summary: 'Conceptos iniciales de la materia.', lessons: [] }
       ],
       finalProjects: [],
       studentList: parseStudentList(prefs.studentListRaw || "")
@@ -98,7 +107,10 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
 }
 
 export async function generateUnitContent(unit: Unit, level: string): Promise<Lesson[]> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API_KEY no configurada.");
+  
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [{ parts: [{ text: UNIT_CONTENT_PROMPT(unit.title, unit.summary, level) }] }],
@@ -116,9 +128,9 @@ export async function generateUnitContent(unit: Unit, level: string): Promise<Le
     title: l.title || `Lección ${i + 1}`,
     blocks: (l.blocks || []).map((b: any) => ({
       type: b.type || 'theory',
-      title: b.title || 'Contenido',
-      content: b.content || 'Sin contenido generado.',
-      competency: b.competency || 'Competencia técnica.',
+      title: b.title || 'Contenido Académico',
+      content: b.content || 'Sin contenido detallado disponible.',
+      competency: b.competency || 'Competencia técnica profesional.',
       weight: b.weight || 0,
       rubric: b.rubric || []
     }))
@@ -126,11 +138,14 @@ export async function generateUnitContent(unit: Unit, level: string): Promise<Le
 }
 
 export async function gradeSubmission(s: string, r: any[], t: string, c: string) {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API_KEY no configurada.");
+
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Califica esta tarea de ${t}. Rúbrica: ${JSON.stringify(r)}. Entrega: ${s}`,
+    contents: `Actúa como un profesor del TecNM. Califica esta tarea de ${t}. Rúbrica: ${JSON.stringify(r)}. Entrega del alumno: ${s}`,
     config: { responseMimeType: "application/json" }
   });
-  return cleanAndParseJson(response.text || "{}") || { score: 0, feedback: "Error al calificar." };
+  return cleanAndParseJson(response.text || "{}") || { score: 0, feedback: "El sínodo no pudo evaluar la entrega en este momento." };
 }
