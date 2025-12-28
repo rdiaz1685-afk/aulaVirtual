@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Course, Unit, Lesson } from '../types';
 import { generateUnitContent } from '../geminiService';
@@ -30,7 +29,7 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
       onUpdateCourse({ ...course, units: updatedUnits });
       setActiveLessonIdx(0);
     } catch (e: any) {
-      alert("Error al conectar con la IA. Por favor, intenta de nuevo.");
+      alert(`Error de Conexión IA:\n${e.message || "Ocurrió un error inesperado."}`);
     } finally {
       setIsBuildingUnit(false);
     }
@@ -156,7 +155,6 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
         function navTo(u, l) { activeU = u; activeL = l; renderNav(); renderContent(); }
         
         function submitTask(w) { 
-            // Fix: remove double backslash before activeL to ensure it is treated as a literal in the HTML output
             const key = \`\${activeU}-\${activeL}\`;
             grades[key] = w; 
             alert('¡Actividad entregada con éxito!');

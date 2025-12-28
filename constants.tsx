@@ -1,4 +1,3 @@
-
 import { Type } from "@google/genai";
 
 export const SKELETON_PROMPT = (prefs: any) => `
@@ -34,19 +33,15 @@ export const SKELETON_SCHEMA = {
 
 export const UNIT_CONTENT_PROMPT = (unitTitle: string, unitSummary: string, level: string) => `
 Eres un experto en Pedagogía para Ingenierías del TecNM. 
-Desarrolla el contenido de la unidad: "${unitTitle}".
-Resumen: ${unitSummary}.
-Nivel: ${level}.
+Desarrolla el contenido detallado de la unidad: "${unitTitle}".
+Resumen de competencia: ${unitSummary}.
+Nivel académico: ${level}.
 
-ESTRATEGIA PEDAGÓGICA:
-1. Lección 1: "Conceptos y Fundamentos" (Básico).
-2. Lección 2: "Aplicación y Análisis".
-
-REQUISITOS POR LECCIÓN:
-- Define una 'competency' clara.
-- La actividad debe tener un 'weight' (valor numérico).
-- IMPORTANTE: La suma de los 'weight' de todas las actividades de esta UNIDAD debe ser 100.
-- Cada actividad debe incluir una 'rubric' con criterios y puntos.
+ESTRATEGIA PEDAGÓGICA REQUERIDA:
+1. Genera exactamente 2 lecciones para esta unidad.
+2. Cada lección debe tener al menos 3 bloques (Teoría, Ejemplo y Actividad/Test).
+3. IMPORTANTE: Si incluyes una actividad, define una 'rubric' clara con criterios de evaluación.
+4. El contenido debe ser técnico, profundo y adecuado para nivel Ingeniería.
 `;
 
 export const UNIT_CONTENT_SCHEMA = {
@@ -63,11 +58,11 @@ export const UNIT_CONTENT_SCHEMA = {
             items: {
               type: Type.OBJECT,
               properties: {
-                type: { type: Type.STRING, enum: ['theory', 'example', 'activity'] },
+                type: { type: Type.STRING, enum: ['theory', 'example', 'activity', 'test'] },
                 title: { type: Type.STRING },
                 content: { type: Type.STRING },
                 competency: { type: Type.STRING },
-                weight: { type: Type.NUMBER, description: "Valor porcentual en la unidad" },
+                weight: { type: Type.NUMBER },
                 rubric: {
                   type: Type.ARRAY,
                   items: {
