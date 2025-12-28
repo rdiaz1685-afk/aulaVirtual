@@ -4,17 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ProfesorIA - TecNM</title>
-    <!-- Cargamos Tailwind y PDF.js para que estén disponibles globalmente -->
+    <!-- Tailwind y PDF.js -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    
-    <!-- Fuentes oficiales -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-    
     <style>
-      body { background-color: #020617; margin: 0; padding: 0; color: white; overflow-x: hidden; }
+      body { background-color: #020617; margin: 0; padding: 0; color: white; overflow: hidden; }
       #root { min-height: 100vh; }
       @keyframes spin { to { transform: rotate(360deg); } }
       .spinner { 
@@ -38,23 +35,17 @@
 </head>
   <body>
     <div id="root">
-      <!-- Este bloque es el "Cargando..." que se ve mientras React despierta -->
-      <div style="display: flex; height: 100vh; align-items: center; justify-content: center; background: #020617; font-family: 'Inter', sans-serif;">
-        <div style="text-align: center;">
-          <div class="spinner"></div>
-          <p style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Iniciando Profesor IA...</p>
-        </div>
+      <div style="display: flex; height: 100vh; flex-direction: column; align-items: center; justify-content: center; background: #020617; font-family: sans-serif;">
+        <div class="spinner"></div>
+        <p style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; color: #64748b;">Iniciando Sistema...</p>
       </div>
     </div>
-
     <script>
-      // Configuración obligatoria para leer PDFs
       if (window.pdfjsLib) {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       }
     </script>
-    
-    <!-- Vite se encarga de transformar este index.tsx en el código final del coche -->
-    <script type="module" src="/index.tsx"></script>
+    <!-- Solo esta línea debe cargar el programa -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

@@ -31,29 +31,12 @@ function App() {
     localStorage.setItem('profesoria_library', JSON.stringify(savedCourses));
   }, [savedCourses]);
 
-  useEffect(() => {
-    let interval: any;
-    if (isGenerating) {
-      interval = setInterval(() => {
-        setLoadingStep(prev => (prev + 1) % 4);
-      }, 2500);
-    }
-    return () => clearInterval(interval);
-  }, [isGenerating]);
-
-  const loadingMessages = [
-    "Analizando Competencias del TecNM...",
-    "Estructurando Unidades de Aprendizaje...",
-    "Sincronizando con el Modelo Flash...",
-    "Finalizando Diseño Instruccional..."
-  ];
-
   const handleLogin = (id: string) => {
     if (!id.trim()) {
-      alert("Por favor ingresa tu ID de Mindbox o Docente.");
+      alert("ID requerido.");
       return;
     }
-    const profile: TeacherProfile = { id, name: 'Docente TecNM', role: 'admin', joinedAt: Date.now() };
+    const profile: TeacherProfile = { id, name: 'Docente', role: 'admin', joinedAt: Date.now() };
     setTeacher(profile);
     localStorage.setItem('profesoria_teacher_session', JSON.stringify(profile));
   };
@@ -61,14 +44,13 @@ function App() {
   const handleGenerate = async (prefs: UserPreferences) => {
     setIsGenerating(true);
     setError(null);
-    setLoadingStep(0);
     try {
       const skeleton = await generateCourseSkeleton(prefs);
       setSavedCourses(prev => [skeleton, ...prev]);
       setCurrentCourse(skeleton);
       setShowForm(false);
     } catch (err: any) { 
-      setError(err.message || "Error al conectar con la IA.");
+      setError(err.message);
     } finally { 
       setIsGenerating(false); 
     }
@@ -80,86 +62,62 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-['Inter'] selection:bg-cyan-500 selection:text-black">
+    <div className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-sans">
       
       {error && (
-        <div className="fixed inset-0 z-[50000] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
-          <div className="bg-slate-900 border border-red-500/30 p-10 rounded-[40px] max-w-md w-full text-center shadow-2xl">
-            <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">⚠️</div>
-            <h2 className="text-xl font-black text-white mb-4 uppercase tracking-tighter">Error de IA</h2>
-            <p className="text-slate-400 text-sm mb-8 leading-relaxed">{error}</p>
-            <button onClick={() => setError(null)} className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase text-[10px] hover:bg-red-500 hover:text-white transition-all">Reintentar</button>
+        <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="bg-slate-900 border border-red-500/30 p-8 rounded-3xl max-w-md w-full text-center">
+            <h2 className="text-xl font-bold text-white mb-4">Error</h2>
+            <p className="text-slate-400 text-sm mb-6">{error}</p>
+            <button onClick={() => setError(null)} className="px-6 py-2 bg-white text-black rounded-xl font-bold">Cerrar</button>
           </div>
         </div>
       )}
 
       {isGenerating && (
-        <div className="fixed inset-0 z-[40000] bg-slate-950/98 flex flex-col items-center justify-center text-center p-10 backdrop-blur-2xl transition-all">
-          <div className="relative mb-12">
-            <div className="w-24 h-24 border-4 border-cyan-500/10 border-t-cyan-500 rounded-full animate-spin shadow-[0_0_50px_rgba(6,182,212,0.3)]"></div>
-            <div className="absolute inset-0 flex items-center justify-center font-black text-cyan-500 text-xl animate-pulse">P</div>
-          </div>
-          <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-4 transition-all duration-500">
-            {loadingMessages[loadingStep]}
-          </h2>
-          <div className="flex gap-2">
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} className={`h-1 w-8 rounded-full transition-all duration-500 ${loadingStep === i ? 'bg-cyan-500 w-12' : 'bg-white/10'}`} />
-            ))}
-          </div>
+        <div className="fixed inset-0 z-[8888] bg-slate-950 flex flex-col items-center justify-center">
+          <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-cyan-500 font-bold uppercase tracking-widest text-xs">Generando Aula Virtual...</p>
         </div>
       )}
 
       {!teacher ? (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black animate-in fade-in duration-1000">
-           <div className="glass-card p-12 rounded-[50px] max-w-sm w-full text-center border-white/5 shadow-2xl animate-in zoom-in-95 duration-500 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-indigo-500"></div>
-              <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-3xl font-black mb-8 shadow-xl shadow-cyan-500/20 text-white">P</div>
-              <h1 className="text-2xl font-black text-white uppercase mb-2 tracking-tighter">Profesor IA</h1>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-8">Portal Docente TecNM</p>
+        <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950">
+           <div className="bg-slate-900 p-10 rounded-[40px] border border-white/5 max-w-sm w-full shadow-2xl">
+              <div className="w-16 h-16 bg-cyan-500 rounded-2xl flex items-center justify-center text-2xl font-black mb-6 text-slate-950 mx-auto">P</div>
+              <h1 className="text-xl font-black text-center text-white uppercase tracking-tight mb-8">Profesor IA</h1>
               <input 
-                className="w-full p-5 rounded-2xl bg-black border border-white/10 mb-4 text-center text-white outline-none focus:border-cyan-500 transition-all font-bold placeholder:text-slate-700 shadow-inner" 
+                className="w-full p-4 rounded-xl bg-black border border-white/10 mb-4 text-white outline-none focus:border-cyan-500" 
                 placeholder="ID Mindbox o Docente" 
                 value={loginInput}
                 onChange={(e) => setLoginInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin(loginInput)} 
               />
-              <button onClick={() => handleLogin(loginInput)} className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-lg hover:scale-[1.02] active:scale-95 transition-all">Ingresar al Aula</button>
+              <button onClick={() => handleLogin(loginInput)} className="w-full py-4 bg-white text-black rounded-xl font-bold uppercase text-xs">Entrar</button>
            </div>
         </div>
       ) : currentCourse ? (
         <CourseViewer course={currentCourse} onExit={() => setCurrentCourse(null)} onUpdateCourse={handleUpdateCourse} />
       ) : (
-        <div className="max-w-6xl mx-auto w-full px-6 py-16 animate-in fade-in duration-700">
-          <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 border-b border-white/5 pb-10 gap-6">
-            <div>
-              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-widest mb-1">Catedrático TecNM</p>
-              <h1 className="text-5xl lg:text-6xl font-black text-white uppercase tracking-tighter leading-none">Mi Biblioteca</h1>
-            </div>
-            <button onClick={() => setShowForm(true)} className="px-8 py-4 bg-cyan-500 text-black rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-white transition-all shadow-xl shadow-cyan-500/10">Nuevo Programa</button>
+        <div className="max-w-6xl mx-auto w-full px-6 py-12">
+          <header className="flex justify-between items-center mb-12">
+            <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Mi Biblioteca</h1>
+            <button onClick={() => setShowForm(true)} className="px-6 py-3 bg-cyan-500 text-slate-950 rounded-xl font-bold uppercase text-[10px]">Nuevo Curso</button>
           </header>
 
           {showForm ? (
-            <div className="animate-in slide-in-from-top-4 duration-500">
-              <button onClick={() => setShowForm(false)} className="mb-8 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white flex items-center gap-2 transition-colors"><span>←</span> Volver a la Lista</button>
+            <div className="animate-in fade-in duration-300">
+              <button onClick={() => setShowForm(false)} className="mb-6 text-slate-500 font-bold uppercase text-[10px]">← Cancelar</button>
               <CourseForm onSubmit={handleGenerate} isLoading={isGenerating} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {savedCourses.length === 0 && (
-                <div className="col-span-full py-40 text-center border-2 border-dashed border-white/5 rounded-[50px] bg-white/5">
-                  <div className="text-4xl mb-6 opacity-20">📚</div>
-                  <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest">Inicia tu primer diseño instruccional</p>
-                </div>
+                <p className="col-span-full text-center py-20 text-slate-600 font-bold uppercase text-xs tracking-widest">No hay cursos guardados.</p>
               )}
               {savedCourses.map(c => (
-                <div key={c.id} onClick={() => setCurrentCourse(c)} className="glass-card p-10 rounded-[40px] border border-white/5 hover:border-cyan-500/30 cursor-pointer transition-all group hover:scale-[1.02] hover:shadow-2xl">
-                  <span className="text-[10px] font-black text-cyan-500 uppercase mb-4 block tracking-tighter">{c.subjectCode || 'TEC-IN'}</span>
-                  <h3 className="font-black text-white text-2xl mb-6 leading-tight group-hover:text-cyan-400 transition-colors uppercase tracking-tighter">{c.title}</h3>
-                  <div className="flex items-center justify-between mt-auto pt-6 border-t border-white/5">
-                    <span className="text-[9px] font-bold text-slate-600 uppercase">{new Date(c.createdAt).toLocaleDateString()}</span>
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-xs group-hover:bg-cyan-500 group-hover:text-black transition-all">→</div>
-                  </div>
+                <div key={c.id} onClick={() => setCurrentCourse(c)} className="bg-slate-900 p-8 rounded-[32px] border border-white/5 hover:border-cyan-500/50 cursor-pointer transition-all">
+                  <h3 className="font-bold text-white text-lg mb-4">{c.title}</h3>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase">Click para abrir</div>
                 </div>
               ))}
             </div>
