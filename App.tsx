@@ -80,7 +80,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-['Inter']">
+    <div className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-['Inter'] selection:bg-cyan-500 selection:text-black">
       
       {error && (
         <div className="fixed inset-0 z-[50000] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
@@ -111,8 +111,9 @@ function App() {
       )}
 
       {!teacher ? (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
-           <div className="glass-card p-12 rounded-[50px] max-w-sm w-full text-center border-white/5 shadow-2xl animate-in zoom-in-95 duration-500">
+        <div className="min-h-screen flex items-center justify-center p-6 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black animate-in fade-in duration-1000">
+           <div className="glass-card p-12 rounded-[50px] max-w-sm w-full text-center border-white/5 shadow-2xl animate-in zoom-in-95 duration-500 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-indigo-500"></div>
               <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-3xl font-black mb-8 shadow-xl shadow-cyan-500/20 text-white">P</div>
               <h1 className="text-2xl font-black text-white uppercase mb-2 tracking-tighter">Profesor IA</h1>
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-8">Portal Docente TecNM</p>
