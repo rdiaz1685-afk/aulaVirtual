@@ -2,11 +2,6 @@ import { GoogleGenAI } from "@google/genai";
 import { UserPreferences, Course, AuthorizedStudent, Lesson, Unit } from "./types";
 import { SKELETON_PROMPT, SKELETON_SCHEMA, UNIT_CONTENT_PROMPT, UNIT_CONTENT_SCHEMA } from "./constants";
 
-const getApiKey = () => {
-  const key = process.env.API_KEY;
-  return key || '';
-};
-
 function cleanAndParseJson(text: string): any {
   try {
     let cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -47,12 +42,7 @@ function parseStudentList(raw: string): AuthorizedStudent[] {
 }
 
 export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Course> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("API_KEY no encontrada. Configúrala en Vercel.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   try {
     const response = await ai.models.generateContent({
@@ -90,8 +80,7 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
 }
 
 export async function generateUnitContent(unit: Unit, level: string): Promise<Lesson[]> {
-  const apiKey = getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [{ parts: [{ text: UNIT_CONTENT_PROMPT(unit.title, unit.summary, level) }] }],
@@ -119,8 +108,7 @@ export async function generateUnitContent(unit: Unit, level: string): Promise<Le
 }
 
 export async function gradeSubmission(s: string, r: any[], t: string, c: string) {
-  const apiKey = getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Califica: ${s} con rúbrica ${JSON.stringify(r)}`,

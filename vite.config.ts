@@ -4,7 +4,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Inyectamos la variable de entorno para que esté disponible en geminiService.ts
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || '')
   },
   build: {
