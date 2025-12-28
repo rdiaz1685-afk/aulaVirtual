@@ -40,9 +40,11 @@ function parseStudentList(raw: string): AuthorizedStudent[] {
 }
 
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
+  // Verificamos múltiples fuentes posibles de la API Key
+  const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
+  
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    throw new Error("ERROR_CONFIGURACION: Falta la API_KEY de Gemini. Por favor, configúrala en el panel de Netlify.");
+    throw new Error("Falta la API_KEY. Asegúrate de configurarla en las variables de entorno de tu servidor (Vercel/Netlify).");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -57,14 +59,12 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
       config: {
         responseMimeType: "application/json",
         responseSchema: SKELETON_SCHEMA,
-        // Desactivamos el razonamiento profundo para máxima velocidad en el esqueleto
-        thinkingConfig: { thinkingBudget: 0 }
       },
     });
 
     const raw = cleanAndParseJson(response.text || "");
     if (!raw || !raw.units) {
-      throw new Error("La IA no pudo estructurar el temario rápidamente. Reintenta.");
+      throw new Error("La IA no pudo estructurar el temario. Reintenta.");
     }
 
     return {
@@ -85,7 +85,7 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
     };
   } catch (err: any) {
     console.error("Error en generateCourseSkeleton:", err);
-    throw new Error(err.message || "Fallo en la conexión ultra-rápida de la IA.");
+    throw new Error(err.message || "Fallo en la comunicación con la IA.");
   }
 }
 
@@ -98,7 +98,6 @@ export async function generateUnitContent(unit: Unit, level: string): Promise<Le
       config: {
         responseMimeType: "application/json",
         responseSchema: UNIT_CONTENT_SCHEMA,
-        // Aquí dejamos que el modelo decida cuánto pensar para asegurar calidad pedagógica
       },
     });
 
@@ -126,7 +125,12 @@ export async function generateUnitContent(unit: Unit, level: string): Promise<Le
 
 export async function gradeSubmission(submission: string, rubric: any[], lessonTitle: string, context: string) {
   const ai = getAiClient();
-  const prompt = `Evalúa como Sínodo: "${lessonTitle}". Entrega: ${submission}. Rúbrica: ${JSON.stringify(rubric)}. JSON con score (0-100) y feedback.`;
+  const prompt = `Evalúa como Sínodo del TecNM la siguiente entrega de la lección "${lessonTitle}". 
+  Contenido contexto: ${context}. 
+  Entrega del alumno: ${submission}. 
+  Rúbrica: ${JSON.stringify(rubric)}. 
+  Responde ÚNICAMENTE un JSON con: { "score": número (0-100), "feedback": "texto corto", "aiLikelihood": "observación de originalidad" }.`;
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",

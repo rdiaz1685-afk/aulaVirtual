@@ -7,6 +7,8 @@ import CourseViewer from './components/CourseViewer';
 function App() {
   const [error, setError] = useState<string | null>(null);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [loginInput, setLoginInput] = useState("");
+  
   const [teacher, setTeacher] = useState<TeacherProfile | null>(() => {
     try {
       const session = localStorage.getItem('profesoria_teacher_session');
@@ -29,7 +31,6 @@ function App() {
     localStorage.setItem('profesoria_library', JSON.stringify(savedCourses));
   }, [savedCourses]);
 
-  // Ciclo de mensajes de carga para mejorar la percepción de velocidad
   useEffect(() => {
     let interval: any;
     if (isGenerating) {
@@ -115,8 +116,14 @@ function App() {
               <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-3xl font-black mb-8 shadow-xl shadow-cyan-500/20 text-white">P</div>
               <h1 className="text-2xl font-black text-white uppercase mb-2 tracking-tighter">Profesor IA</h1>
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-8">Portal Docente TecNM</p>
-              <input id="login-id" className="w-full p-5 rounded-2xl bg-black border border-white/10 mb-4 text-center text-white outline-none focus:border-cyan-500 transition-all font-bold placeholder:text-slate-700 shadow-inner" placeholder="ID Mindbox o Docente" onKeyDown={e => e.key === 'Enter' && handleLogin((e.target as any).value)} />
-              <button onClick={() => handleLogin((document.getElementById('login-id') as any).value)} className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-lg hover:scale-[1.02] active:scale-95 transition-all">Ingresar al Aula</button>
+              <input 
+                className="w-full p-5 rounded-2xl bg-black border border-white/10 mb-4 text-center text-white outline-none focus:border-cyan-500 transition-all font-bold placeholder:text-slate-700 shadow-inner" 
+                placeholder="ID Mindbox o Docente" 
+                value={loginInput}
+                onChange={(e) => setLoginInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin(loginInput)} 
+              />
+              <button onClick={() => handleLogin(loginInput)} className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs shadow-lg hover:scale-[1.02] active:scale-95 transition-all">Ingresar al Aula</button>
            </div>
         </div>
       ) : currentCourse ? (
