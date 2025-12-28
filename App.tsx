@@ -28,8 +28,8 @@ function App() {
     localStorage.setItem('profesoria_library', JSON.stringify(savedCourses));
   }, [savedCourses]);
 
-  // Validación robusta de API Key
-  const isApiKeyMissing = !process.env.API_KEY || process.env.API_KEY.length < 10;
+  // Validación de API Key
+  const isApiKeyMissing = !process.env.API_KEY || process.env.API_KEY.length < 5;
 
   const handleLogin = (id: string) => {
     if (!id.trim()) {
@@ -43,7 +43,7 @@ function App() {
 
   const handleGenerate = async (prefs: UserPreferences) => {
     if (isApiKeyMissing) {
-      setError("Sistema de IA no configurado. Debes añadir la variable API_KEY en el panel de Vercel.");
+      setError("Falta la API_KEY en Vercel. Ve a Settings > Environment Variables y añade API_KEY.");
       return;
     }
     setIsGenerating(true);
@@ -54,154 +54,92 @@ function App() {
       setCurrentCourse(skeleton);
       setShowForm(false);
     } catch (err: any) { 
-      setError("Error de comunicación con el Sínodo IA: " + (err.message || "Reintenta en unos momentos."));
+      setError("Error de Sínodo IA: " + (err.message || "Fallo de conexión."));
     } finally { 
       setIsGenerating(false); 
     }
   };
 
+  // Missing function added to update course state and library
+  const handleUpdateCourse = (updated: Course) => {
+    setSavedCourses(prev => prev.map(c => c.id === updated.id ? updated : c));
+    setCurrentCourse(updated);
+  };
+
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const content = event.target?.result as string;
         const imported = JSON.parse(content) as Course;
-        const newCourse = { ...imported, id: `imported_${Date.now()}` };
-        setSavedCourses(prev => [newCourse, ...prev]);
-        setCurrentCourse(newCourse);
+        setSavedCourses(prev => [{ ...imported, id: `imp_${Date.now()}` }, ...prev]);
         e.target.value = "";
-      } catch (err) {
-        alert("Error: El archivo JSON no es un respaldo válido.");
-        e.target.value = "";
-      }
+      } catch { alert("JSON inválido."); }
     };
     reader.readAsText(file);
-  };
-
-  const handleUpdateCourse = (updated: Course) => {
-    setCurrentCourse(updated);
-    setSavedCourses(prev => prev.map(c => c.id === updated.id ? updated : c));
   };
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-['Inter']">
       
-      {/* Aviso de Configuración Crítica */}
-      {isApiKeyMissing && teacher && !currentCourse && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 p-3 text-center animate-pulse">
-          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">
-            ⚠️ Modo de Visualización: La generación por IA requiere configurar la API_KEY en Vercel
+      {/* Diagnóstico de API KEY */}
+      {isApiKeyMissing && teacher && (
+        <div className="bg-red-500/10 border-b border-red-500/20 p-2 text-center">
+          <p className="text-[9px] font-black text-red-500 uppercase tracking-[0.3em]">
+            ⚠️ SISTEMA SIN MOTOR IA: FALTA API_KEY EN VERCEL
           </p>
         </div>
       )}
 
-      {/* Modal de Error */}
       {error && (
-        <div className="fixed inset-0 z-[30000] bg-slate-950/90 flex items-center justify-center p-6 backdrop-blur-md">
-          <div className="max-w-md w-full bg-slate-900 border border-red-500/30 p-10 rounded-[40px] text-center shadow-2xl">
-            <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">⚠️</div>
-            <h2 className="text-xl font-black text-white mb-4 uppercase tracking-tighter">Fallo en el Sistema</h2>
-            <p className="text-slate-400 text-sm mb-8 leading-relaxed">{error}</p>
-            <button onClick={() => setError(null)} className="w-full py-4 bg-white text-slate-950 rounded-2xl font-black uppercase text-xs hover:bg-red-500 hover:text-white transition-all">Entendido</button>
+        <div className="fixed inset-0 z-[50000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-red-500/30 p-8 rounded-[32px] max-w-sm w-full text-center">
+            <h2 className="text-white font-black uppercase mb-4">Error Crítico</h2>
+            <p className="text-slate-400 text-xs mb-6">{error}</p>
+            <button onClick={() => setError(null)} className="w-full py-3 bg-white text-black rounded-xl font-black text-[10px] uppercase">Cerrar</button>
           </div>
         </div>
       )}
 
-      {/* Loader de IA */}
       {isGenerating && (
-        <div className="fixed inset-0 z-[20000] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-2xl p-10 text-center">
-          <div className="w-24 h-24 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin mb-8 shadow-[0_0_40px_rgba(6,182,212,0.2)]"></div>
-          <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Diseñando Arquitectura...</h2>
-          <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">Sínodo IA en Proceso de Evaluación</p>
+        <div className="fixed inset-0 z-[40000] bg-slate-950 flex flex-col items-center justify-center text-center p-10">
+          <div className="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin mb-6"></div>
+          <h2 className="text-white font-black uppercase tracking-widest">Generando Aula...</h2>
         </div>
       )}
 
       {!teacher ? (
-        <div className="min-h-screen flex items-center justify-center p-6 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
-           <div className="glass-card p-12 rounded-[50px] max-w-sm w-full text-center border-white/5 shadow-2xl">
-              <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-3xl font-black mb-8 shadow-xl shadow-cyan-500/20 text-white">P</div>
-              <h1 className="text-2xl font-black text-white uppercase mb-2 tracking-tighter">Profesor IA</h1>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-8">TecNM Nodo Virtual</p>
-              <input 
-                id="login-id" 
-                className="w-full p-5 rounded-2xl bg-slate-950 border border-white/5 mb-4 text-center text-white outline-none focus:border-cyan-500 transition-all placeholder:text-slate-700 text-sm font-bold" 
-                placeholder="ID Mindbox / Docente" 
-                onKeyDown={(e) => e.key === 'Enter' && handleLogin((e.target as HTMLInputElement).value)}
-              />
-              <button 
-                onClick={() => handleLogin((document.getElementById('login-id') as HTMLInputElement).value)} 
-                className="w-full py-5 bg-white text-slate-950 rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-cyan-500 hover:scale-[1.02] transition-all"
-              >
-                Ingresar al Nodo
-              </button>
+        <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950">
+           <div className="glass-card p-12 rounded-[50px] max-w-sm w-full text-center border-white/5">
+              <div className="w-16 h-16 bg-cyan-500 rounded-2xl mx-auto flex items-center justify-center text-2xl font-black mb-6 text-white shadow-xl shadow-cyan-500/20">P</div>
+              <h1 className="text-xl font-black text-white uppercase mb-6">Profesor IA</h1>
+              <input id="login-id" className="w-full p-4 rounded-xl bg-black border border-white/10 mb-4 text-center text-white outline-none focus:border-cyan-500" placeholder="ID Docente" onKeyDown={e => e.key === 'Enter' && handleLogin((e.target as any).value)} />
+              <button onClick={() => handleLogin((document.getElementById('login-id') as any).value)} className="w-full py-4 bg-white text-black rounded-xl font-black uppercase text-[10px]">Acceder</button>
            </div>
         </div>
       ) : currentCourse ? (
         <CourseViewer course={currentCourse} onExit={() => setCurrentCourse(null)} onUpdateCourse={handleUpdateCourse} />
       ) : (
-        <div className="max-w-7xl mx-auto w-full px-8 py-20 animate-in fade-in duration-700">
-          <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-16 border-b border-white/5 pb-10 gap-6">
-            <div>
-              <p className="text-cyan-500 text-[10px] font-black uppercase tracking-widest mb-1">Catedrático: {teacher.name}</p>
-              <h1 className="text-5xl lg:text-7xl font-black text-white tracking-tighter uppercase">Biblioteca</h1>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <input type="file" id="import-json" className="hidden" accept=".json" onChange={handleImportJson} />
-              <label htmlFor="import-json" className="cursor-pointer px-8 py-5 bg-slate-900 border border-white/10 text-white rounded-[24px] font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-2">
-                <span>📁</span> Importar Respaldo
-              </label>
-              <button 
-                onClick={() => setShowForm(true)} 
-                className="px-8 py-5 bg-white text-slate-950 rounded-[24px] font-black text-[10px] uppercase tracking-widest hover:bg-cyan-500 transition-all shadow-xl shadow-white/5"
-              >
-                Nuevo Programa
-              </button>
+        <div className="max-w-6xl mx-auto w-full px-6 py-12">
+          <header className="flex justify-between items-end mb-12 border-b border-white/5 pb-8">
+            <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Biblioteca</h1>
+            <div className="flex gap-3">
+              <button onClick={() => setShowForm(true)} className="px-6 py-3 bg-cyan-500 text-black rounded-xl font-black uppercase text-[10px]">Nuevo Programa</button>
             </div>
           </header>
 
           {showForm ? (
-            <div className="animate-in fade-in slide-in-from-top-4 duration-500">
-              <button onClick={() => setShowForm(false)} className="mb-10 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 hover:text-white transition-colors">
-                <span>←</span> Cancelar Operación
-              </button>
-              <CourseForm onSubmit={handleGenerate} isLoading={isGenerating} />
-            </div>
+            <CourseForm onSubmit={handleGenerate} isLoading={isGenerating} />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {savedCourses.length === 0 && (
-                <div className="col-span-full text-center py-40 bg-slate-900/20 rounded-[60px] border border-dashed border-white/5">
-                  <div className="text-4xl mb-4 opacity-20">📚</div>
-                  <p className="text-slate-500 font-bold uppercase text-[10px] tracking-[0.4em]">Sin registros académicos</p>
-                  <p className="text-slate-600 text-xs mt-2 font-medium">Diseña un nuevo curso para comenzar.</p>
-                </div>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {savedCourses.map(c => (
-                <div 
-                  key={c.id} 
-                  onClick={() => setCurrentCourse(c)} 
-                  className="glass-card p-10 rounded-[40px] border border-white/5 hover:border-cyan-500/40 cursor-pointer transition-all group hover:scale-[1.01] hover:shadow-2xl hover:shadow-cyan-500/5"
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <span className="text-[9px] font-black text-cyan-500 bg-cyan-500/10 px-3 py-1 rounded-full uppercase tracking-tighter border border-cyan-500/20">{c.subjectCode || 'TEC-X'}</span>
-                    <span className="text-[9px] font-bold text-slate-600 uppercase">{new Date(c.createdAt).toLocaleDateString()}</span>
-                  </div>
-                  <h3 className="font-black text-white text-2xl mb-4 line-clamp-2 group-hover:text-cyan-400 transition-colors leading-tight uppercase tracking-tighter">{c.title}</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500 tracking-widest">
-                      <span>Avance Curricular</span>
-                      <span className="text-cyan-400">{Math.round((c.units.filter(u => u.lessons.length > 0).length / c.units.length) * 100)}%</span>
-                    </div>
-                    <div className="flex gap-1.5 h-1.5">
-                      {c.units.map((u, i) => (
-                        <div 
-                          key={i} 
-                          className={`flex-1 rounded-full transition-all duration-1000 ${u.lessons.length > 0 ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.4)]' : 'bg-slate-800'}`}
-                        ></div>
-                      ))}
-                    </div>
+                <div key={c.id} onClick={() => setCurrentCourse(c)} className="glass-card p-8 rounded-[32px] border border-white/5 hover:border-cyan-500/30 cursor-pointer transition-all">
+                  <span className="text-[9px] font-black text-cyan-500 uppercase mb-2 block">{c.subjectCode}</span>
+                  <h3 className="font-black text-white text-lg mb-4 leading-tight">{c.title}</h3>
+                  <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-cyan-500" style={{width: '20%'}}></div>
                   </div>
                 </div>
               ))}
@@ -209,10 +147,6 @@ function App() {
           )}
         </div>
       )}
-      
-      <footer className="mt-auto py-10 border-t border-white/5 text-center">
-        <p className="text-[9px] font-black text-slate-700 uppercase tracking-[0.6em]">ProfesorIA © 2025 - Sistema de Ingeniería Instruccional TecNM</p>
-      </footer>
     </div>
   );
 }
