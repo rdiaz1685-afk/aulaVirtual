@@ -40,11 +40,11 @@ function parseStudentList(raw: string): AuthorizedStudent[] {
 }
 
 const getAiClient = () => {
-  // Verificamos múltiples fuentes posibles de la API Key
-  const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
+  // Uso estricto de process.env.API_KEY inyectado por Vite/Vercel
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    throw new Error("Falta la API_KEY. Asegúrate de configurarla en las variables de entorno de tu servidor (Vercel/Netlify).");
+    throw new Error("API_KEY no detectada. Por favor, configúrala en el Dashboard de Vercel (Settings > Environment Variables) y realiza un Redeploy.");
   }
   return new GoogleGenAI({ apiKey });
 };
