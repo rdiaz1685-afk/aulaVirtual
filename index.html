@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
   <head>
@@ -17,6 +16,7 @@
         color: #f8fafc;
         margin: 0;
         padding: 0;
+        overflow-x: hidden;
       }
       .neon-border { box-shadow: 0 0 10px rgba(139, 92, 246, 0.3), 0 0 20px rgba(139, 92, 246, 0.1); }
       .glass-card {
@@ -44,10 +44,11 @@
   <body>
     <div id="root"></div>
     <script>
-      // Configuración de PDF.js para que funcione en cualquier servidor
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      // Configuración global para PDF.js necesaria para la extracción de alumnos y temarios
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
     </script>
-    <!-- Punto de entrada principal: usamos ruta relativa ./ para máxima compatibilidad -->
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
