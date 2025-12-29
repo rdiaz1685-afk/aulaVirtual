@@ -1,14 +1,17 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { UserPreferences, Course, AuthorizedStudent, Lesson, Unit } from "./types";
 import { SKELETON_PROMPT, SKELETON_SCHEMA, UNIT_CONTENT_PROMPT, UNIT_CONTENT_SCHEMA } from "./constants";
 
 function cleanAndParseJson(text: string): any {
   if (!text) return null;
+  const trimmed = text.trim();
   try {
-    return JSON.parse(text.trim());
+    return JSON.parse(trimmed);
   } catch (e) {
     try {
-      let cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      // Intento de limpieza profunda si el modelo devuelve markdown
+      let cleanText = trimmed.replace(/```json/gi, "").replace(/```/g, "").trim();
       const start = cleanText.indexOf('{');
       const end = cleanText.lastIndexOf('}');
       if (start !== -1 && end !== -1) {
@@ -40,18 +43,15 @@ function parseStudentList(raw: string): AuthorizedStudent[] {
 }
 
 const getAiClient = () => {
-  // Uso estricto de process.env.API_KEY inyectado por Vite/Vercel
   const apiKey = process.env.API_KEY;
-  
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    throw new Error("API_KEY no detectada. Por favor, configúrala en el Dashboard de Vercel (Settings > Environment Variables) y realiza un Redeploy.");
+    throw new Error("API_KEY no detectada. Por favor, asegúrese de que la clave de API esté configurada.");
   }
   return new GoogleGenAI({ apiKey });
 };
 
 export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Course> {
   const ai = getAiClient();
-  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -63,9 +63,7 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
     });
 
     const raw = cleanAndParseJson(response.text || "");
-    if (!raw || !raw.units) {
-      throw new Error("La IA no pudo estructurar el temario. Reintenta.");
-    }
+    if (!raw || !raw.units) throw new Error("La IA no devolvió una estructura válida.");
 
     return {
       id: `course_${Date.now()}`,
@@ -77,15 +75,14 @@ export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Co
       units: (raw.units || []).map((u: any, i: number) => ({
         id: `u${i}`,
         title: u.title || `Unidad ${i+1}`,
-        summary: u.summary || "Contenido pendiente de generación.",
+        summary: u.summary || "Contenido pendiente.",
         lessons: []
       })),
       finalProjects: [],
       studentList: parseStudentList(prefs.studentListRaw || "")
     };
   } catch (err: any) {
-    console.error("Error en generateCourseSkeleton:", err);
-    throw new Error(err.message || "Fallo en la comunicación con la IA.");
+    throw new Error(`Error generando temario: ${err.message}`);
   }
 }
 
@@ -102,34 +99,54 @@ export async function generateUnitContent(unit: Unit, level: string): Promise<Le
     });
 
     const rawData = cleanAndParseJson(response.text || "");
-    if (!rawData || !rawData.lessons || !Array.isArray(rawData.lessons)) {
-      throw new Error("Error estructurando lecciones.");
-    }
+    if (!rawData || !rawData.lessons) throw new Error("Respuesta de lecciones vacía.");
 
-    return rawData.lessons.map((l: any, i: number) => ({
+    return (rawData.lessons || []).map((l: any, i: number) => ({
       id: `l_${Date.now()}_${i}`,
       title: l.title || `Lección ${i + 1}`,
       blocks: (l.blocks || []).map((b: any) => ({
-        type: b.type || 'theory',
-        title: b.title || 'Tema Técnico',
-        content: b.content || 'Cargando contenido...',
-        competency: b.competency || 'Competencia técnica.',
+        // Normalizamos el tipo a minúsculas para asegurar coincidencia en UI
+        type: (b.type || 'theory').toLowerCase() as any,
+        title: b.title || 'Tema',
+        content: b.content || 'Sin contenido.',
+        competency: b.competency || '',
         weight: b.weight || 0,
-        rubric: b.rubric || []
+        rubric: b.rubric || [],
+        testQuestions: b.testQuestions || []
       }))
     }));
   } catch (err: any) {
-    throw new Error(err.message || "Fallo al generar contenido de unidad.");
+    throw new Error(`Error generando contenido de unidad: ${err.message}`);
   }
 }
 
 export async function gradeSubmission(submission: string, rubric: any[], lessonTitle: string, context: string) {
   const ai = getAiClient();
-  const prompt = `Evalúa como Sínodo del TecNM la siguiente entrega de la lección "${lessonTitle}". 
-  Contenido contexto: ${context}. 
-  Entrega del alumno: ${submission}. 
-  Rúbrica: ${JSON.stringify(rubric)}. 
-  Responde ÚNICAMENTE un JSON con: { "score": número (0-100), "feedback": "texto corto", "aiLikelihood": "observación de originalidad" }.`;
+  const prompt = `
+    Actúa como un Sínodo Evaluador de Ingeniería del TecNM. 
+    Tu objetivo es revisar la entrega del alumno de forma crítica y pedagógica.
+
+    CONTEXTO DE LA LECCIÓN: "${lessonTitle}"
+    CONTENIDO TEÓRICO: "${context}"
+    ENTREGA DEL ALUMNO: "${submission}"
+    RÚBRICA: ${JSON.stringify(rubric)}
+
+    INSTRUCCIONES DE EVALUACIÓN:
+    1. Analiza si la respuesta demuestra comprensión profunda.
+    2. Asigna puntaje criterio por criterio según la rúbrica.
+    3. Detecta errores técnicos.
+
+    RESPONDE ÚNICAMENTE UN JSON:
+    {
+      "score": número,
+      "maxScore": número,
+      "breakdown": [ { "criterion": "string", "score": número, "feedback": "string" } ],
+      "generalFeedback": "string",
+      "strengths": ["string"],
+      "improvementAreas": ["string"],
+      "academicIntegrity": "string"
+    }
+  `;
   
   try {
     const response = await ai.models.generateContent({
@@ -137,8 +154,8 @@ export async function gradeSubmission(submission: string, rubric: any[], lessonT
       contents: [{ parts: [{ text: prompt }] }],
       config: { responseMimeType: "application/json" }
     });
-    return cleanAndParseJson(response.text || "") || { score: 0, feedback: "Error en evaluación." };
+    return cleanAndParseJson(response.text || "");
   } catch {
-    return { score: 0, feedback: "Fallo de conexión sínodo." };
+    return { score: 0, maxScore: 100, generalFeedback: "Error de conexión con el sínodo evaluador." };
   }
 }

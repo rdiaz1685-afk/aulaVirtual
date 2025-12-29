@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { UserPreferences, Course, TeacherProfile } from './types';
 import { generateCourseSkeleton } from './geminiService';
@@ -9,7 +10,7 @@ function App() {
   const [loginInput, setLoginInput] = useState("");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [appKey, setAppKey] = useState(0); // Llave para forzar re-render total si fuera necesario
+  const [appKey, setAppKey] = useState(0); 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [teacher, setTeacher] = useState<TeacherProfile | null>(() => {
@@ -51,20 +52,35 @@ function App() {
   const executeLogout = () => {
     setShowLogoutConfirm(false);
     setIsLoggingOut(true);
-    
-    // 1. Limpiamos la persistencia física
     localStorage.removeItem('profesoria_teacher_session');
-    
-    // 2. Simulamos la desconexión del nodo
     setTimeout(() => {
-      // 3. RESET DE ESTADO PURO (Sin recargar página)
-      // Al poner teacher en null, el render condicional nos llevará al Login automáticamente
       setTeacher(null);
       setCurrentCourse(null);
       setShowForm(false);
       setIsLoggingOut(false);
-      setAppKey(prev => prev + 1); // Incrementamos la llave para limpiar cualquier residuo de renderizado
+      setAppKey(prev => prev + 1);
     }, 1500);
+  };
+
+  const downloadJson = (data: any, filename: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCourse = (e: React.MouseEvent, course: Course) => {
+    e.stopPropagation();
+    downloadJson(course, `Curso_${course.title.replace(/\s+/g, '_')}`);
+  };
+
+  const handleExportLibrary = () => {
+    downloadJson(savedCourses, `Biblioteca_ProfesorIA_${teacher?.id || 'Docente'}`);
   };
 
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,18 +91,20 @@ function App() {
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target?.result as string);
-        if (imported.title && imported.units) {
+        if (Array.isArray(imported)) {
+          setSavedCourses(prev => [...imported, ...prev]);
+        } else if (imported.title && imported.units) {
           const newCourse = { ...imported, id: `imported_${Date.now()}` };
           setSavedCourses(prev => [newCourse, ...prev]);
-          
-          const toast = document.createElement('div');
-          toast.className = "fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-950 px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest z-[10000] animate-bounce shadow-2xl";
-          toast.innerText = "✓ Curso recuperado en biblioteca";
-          document.body.appendChild(toast);
-          setTimeout(() => toast.remove(), 3000);
         } else {
           throw new Error("Formato incompatible.");
         }
+        
+        const toast = document.createElement('div');
+        toast.className = "fixed bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-950 px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest z-[10000] animate-bounce shadow-2xl";
+        toast.innerText = "✓ Datos recuperados con éxito";
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
       } catch (err: any) {
         setError("Error al leer el respaldo: " + err.message);
       }
@@ -118,7 +136,6 @@ function App() {
   return (
     <div key={appKey} className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-sans">
       
-      {/* MODAL DE CONFIRMACIÓN DE SALIDA */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[11000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-slate-900 border border-white/10 p-10 rounded-[40px] max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-200">
@@ -133,7 +150,6 @@ function App() {
         </div>
       )}
 
-      {/* OVERLAY DE DESCONEXIÓN */}
       {isLoggingOut && (
         <div className="fixed inset-0 z-[12000] bg-[#020617] flex flex-col items-center justify-center animate-in fade-in duration-300">
            <div className="w-12 h-12 border-4 border-slate-700 border-t-cyan-500 rounded-full animate-spin mb-6"></div>
@@ -203,13 +219,19 @@ function App() {
               <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] mt-2">TecNM Digital Campus</p>
             </div>
             
-            <div className="flex gap-4 animate-in slide-in-from-right-4 duration-500">
+            <div className="flex flex-wrap gap-4 animate-in slide-in-from-right-4 duration-500">
                <input type="file" ref={fileInputRef} onChange={handleImportJson} accept=".json" className="hidden" />
                <button 
                  onClick={() => fileInputRef.current?.click()} 
-                 className="px-8 py-4 bg-slate-800 text-slate-300 border border-white/5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-700 transition-all active:scale-95"
+                 className="px-6 py-4 bg-slate-800 text-slate-300 border border-white/5 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-700 transition-all"
                >
-                 📂 Cargar Respaldo
+                 📂 Cargar
+               </button>
+               <button 
+                 onClick={handleExportLibrary}
+                 className="px-6 py-4 bg-slate-800 text-slate-300 border border-white/5 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-700 transition-all"
+               >
+                 📥 Exportar Todo
                </button>
                <button 
                  onClick={() => setShowForm(true)} 
@@ -244,7 +266,16 @@ function App() {
                     style={{ animationDelay: `${idx * 100}ms` }}
                   >
                     <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 blur-3xl rounded-full"></div>
-                    <p className="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-4">ID: {c.subjectCode || 'TEC-GEN'}</p>
+                    <div className="flex justify-between items-start mb-4">
+                       <p className="text-[9px] font-black text-cyan-500 uppercase tracking-widest">ID: {c.subjectCode || 'TEC-GEN'}</p>
+                       <button 
+                         onClick={(e) => handleExportCourse(e, c)}
+                         className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center hover:bg-cyan-500 hover:text-slate-950 transition-all"
+                         title="Exportar Curso"
+                       >
+                         📥
+                       </button>
+                    </div>
                     <h3 className="font-black text-white text-2xl mb-8 line-clamp-3 uppercase tracking-tighter group-hover:text-cyan-400 transition-colors leading-none">{c.title}</h3>
                     <div className="flex justify-between items-center pt-8 border-t border-white/5">
                       <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Entrar al Aula</div>
