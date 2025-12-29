@@ -97,3 +97,16 @@ export const UNIT_CONTENT_SCHEMA = {
   },
   required: ["lessons"]
 };
+
+export const GRADE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    score: { type: Type.NUMBER, description: "Calificación del 0 al 100" },
+    authenticityScore: { type: Type.NUMBER, description: "Probabilidad de ser humano vs IA (0-100)" },
+    generalFeedback: { type: Type.STRING, description: "Retroalimentación general" },
+    aiDetectionReason: { type: Type.STRING, description: "Explicación técnica de sospecha de IA o validación humana" },
+    strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+    improvementAreas: { type: Type.ARRAY, items: { type: Type.STRING } }
+  },
+  required: ["score", "authenticityScore", "generalFeedback", "aiDetectionReason", "strengths", "improvementAreas"]
+};
