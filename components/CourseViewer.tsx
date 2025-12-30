@@ -98,6 +98,10 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
             const [lIdx, setLIdx] = useState(0);
             const [completed, setCompleted] = useState(new Set());
             const [responses, setResponses] = useState({});
+            
+            // Estado para Tests (Quizzes)
+            const [testScores, setTestScores] = useState({}); 
+            
             const [showDefense, setShowDefense] = useState(false);
             const [defenseData, setDefenseData] = useState({ lessonTitle: '', blockTitle: '', text: '' });
             const [reflection, setReflection] = useState('');
@@ -107,6 +111,49 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
 
             const unit = COURSE_DATA.units[uIdx];
             const lesson = unit?.lessons[lIdx];
+
+            // 1. Calcular total de actividades en la unidad actual
+            const unitActivityStats = useMemo(() => {
+                if (!unit) return { count: 0, pointsPerActivity: 0 };
+                let count = 0;
+                unit.lessons.forEach(l => {
+                    l.blocks.forEach(b => {
+                        const type = (b.type || '').toLowerCase();
+                        const title = (b.title || '').toLowerCase();
+                        if (type === 'activity' || title.includes('actividad') || title.includes('cuadro')) {
+                            count++;
+                        }
+                    });
+                });
+                // Dividir 90 puntos entre el número de actividades
+                const pointsPerActivity = count > 0 ? (90 / count).toFixed(1) : 0;
+                return { count, pointsPerActivity };
+            }, [unit]);
+
+
+            // Cálculo de Calificación en Tiempo Real
+            const currentGrade = useMemo(() => {
+                if (!unit) return 0;
+                let totalTests = 0;
+                let totalTestScore = 0;
+                
+                unit.lessons.forEach(l => {
+                    l.blocks.forEach((b, bIdx) => {
+                        if (b.type === 'test') {
+                            totalTests++;
+                            const key = l.id + '-' + bIdx;
+                            if (testScores[key] !== undefined) {
+                                totalTestScore += testScores[key];
+                            }
+                        }
+                    });
+                });
+
+                const avgTest = totalTests > 0 ? (totalTestScore / totalTests) : 100;
+                const pointsFromTests = (avgTest / 100) * 10;
+                
+                return pointsFromTests.toFixed(1);
+            }, [unit, testScores]);
 
             useEffect(() => {
                 let timer;
@@ -161,42 +208,29 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
                 alert("¡Entrega validada y descargada!");
             };
 
+            const updateBlockScore = (lessonId, blockIdx, score) => {
+                setTestScores(prev => ({
+                    ...prev,
+                    [lessonId + '-' + blockIdx]: score
+                }));
+            };
+
             return React.createElement('div', { className: 'flex h-screen bg-[#020617]' }, [
                 
-                // Modal de Defensa Meta-cognitiva
+                // Modal Defensa
                 showDefense && React.createElement('div', { className: 'fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-6' }, [
                     React.createElement('div', { className: 'bg-slate-900 border border-white/10 p-12 rounded-[50px] max-w-2xl w-full shadow-2xl animate-in zoom-in-95' }, [
-                        React.createElement('div', { className: 'flex justify-between items-center mb-8' }, [
-                            React.createElement('div', null, [
-                                React.createElement('h2', { className: 'text-2xl font-black text-white uppercase tracking-tighter' }, 'Validación de Aprendizaje'),
-                                React.createElement('p', { className: 'text-slate-500 text-[9px] font-black uppercase tracking-widest mt-1' }, 'Paso final: Defensa de la actividad')
-                            ]),
-                            React.createElement('div', { className: 'text-right' }, [
-                                React.createElement('p', { className: 'text-amber-500 text-[9px] font-black uppercase tracking-widest' }, 'Tiempo Restante'),
-                                React.createElement('p', { className: 'text-3xl font-black text-white ' + (timeLeft < 30 ? 'text-red-500 timer-blink' : '') }, 
-                                    Math.floor(timeLeft / 60) + ':' + (timeLeft % 60).toString().padStart(2, '0'))
-                            ])
+                         React.createElement('div', { className: 'flex justify-between items-center mb-8' }, [
+                            React.createElement('h2', { className: 'text-2xl font-black text-white uppercase' }, 'Validación'),
+                            React.createElement('p', { className: 'text-3xl font-black text-white' }, Math.floor(timeLeft / 60) + ':' + (timeLeft % 60).toString().padStart(2, '0'))
                         ]),
-                        React.createElement('div', { className: 'space-y-6' }, [
-                            React.createElement('p', { className: 'text-slate-300 text-sm font-bold bg-white/5 p-6 rounded-3xl border border-white/5' }, 
-                                'Para asegurar que no usaste una IA de forma indebida, describe en tus propias palabras: ¿Qué pasos seguiste para resolver esta actividad y cuál fue la conclusión más importante que obtuviste?'),
-                            React.createElement('textarea', { 
-                                value: reflection,
-                                onChange: (e) => setReflection(e.target.value),
-                                placeholder: 'Escribe aquí tu defensa (mínimo 50 caracteres)...',
-                                className: 'w-full h-48 bg-black/40 border border-white/10 rounded-3xl p-8 text-white outline-none focus:border-cyan-500 font-medium'
-                            }),
-                            React.createElement('div', { className: 'flex gap-4' }, [
-                                React.createElement('button', { 
-                                    onClick: () => setShowDefense(false),
-                                    className: 'flex-1 py-5 bg-slate-800 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest'
-                                }, 'Cancelar'),
-                                React.createElement('button', { 
-                                    onClick: finalizeTask,
-                                    className: 'flex-2 px-10 py-5 bg-cyan-500 text-slate-950 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-cyan-400'
-                                }, 'Validar y Descargar Tarea')
-                            ])
-                        ])
+                        React.createElement('textarea', { 
+                            value: reflection,
+                            onChange: (e) => setReflection(e.target.value),
+                            placeholder: 'Defensa...',
+                            className: 'w-full h-48 bg-black/40 border border-white/10 rounded-3xl p-8 text-white mb-6'
+                        }),
+                        React.createElement('button', { onClick: finalizeTask, className: 'w-full py-5 bg-cyan-500 text-slate-950 rounded-2xl font-black uppercase' }, 'Enviar')
                     ])
                 ]),
 
@@ -206,6 +240,20 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
                         React.createElement('p', { className: 'text-[9px] font-black text-cyan-500 uppercase tracking-widest' }, 'Plataforma Alumno'),
                         React.createElement('h1', { className: 'text-md font-black uppercase tracking-tighter mt-2' }, COURSE_DATA.title)
                     ]),
+                    
+                    // WIDGET DE CALIFICACIÓN
+                    React.createElement('div', { className: 'mx-6 mt-6 p-6 bg-slate-900 rounded-3xl border border-white/5' }, [
+                         React.createElement('p', { className: 'text-[8px] font-black text-slate-500 uppercase tracking-widest mb-2' }, 'Tu Desempeño (Unidad Actual)'),
+                         React.createElement('div', { className: 'flex items-end gap-2' }, [
+                            React.createElement('span', { className: 'text-4xl font-black text-white' }, currentGrade),
+                            React.createElement('span', { className: 'text-xs font-bold text-slate-500 mb-2' }, '/ 10 pts (Tests)')
+                         ]),
+                         React.createElement('div', { className: 'w-full h-2 bg-slate-800 rounded-full mt-3 overflow-hidden' }, 
+                            React.createElement('div', { className: 'h-full bg-amber-500 transition-all duration-500', style: { width: (currentGrade * 10) + '%' } })
+                         ),
+                         React.createElement('p', { className: 'text-[8px] text-amber-500 mt-2 font-bold' }, '* Las Prácticas suman los otros 90 pts.')
+                    ]),
+
                     React.createElement('div', { className: 'flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar' }, 
                         COURSE_DATA.units.map((u, ui) => React.createElement('div', { key: ui }, [
                             React.createElement('button', { 
@@ -226,11 +274,32 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
                     lesson ? React.createElement('div', { key: lesson.id, className: 'max-w-4xl mx-auto fade-entry' }, [
                         React.createElement('h2', { className: 'text-5xl font-black mb-16 uppercase tracking-tighter' }, lesson.title),
                         lesson.blocks.map((block, bi) => {
-                            const isActivity = block.type === 'activity' || block.title.toLowerCase().includes('actividad');
-                            return React.createElement('div', { key: bi, className: 'rounded-[40px] border border-white/5 bg-slate-900/20 mb-12 overflow-hidden' }, [
+                            const titleLower = (block.title || '').toLowerCase();
+                            const isActivity = block.type === 'activity' || titleLower.includes('actividad') || titleLower.includes('cuadro');
+                            const isTest = block.type === 'test';
+
+                            // Texto del Badge
+                            let badgeText = '';
+                            if (isTest) badgeText = 'Valor: 10% (Global Quiz)';
+                            else if (isActivity) badgeText = 'Valor: ' + unitActivityStats.pointsPerActivity + ' Pts';
+
+                            return React.createElement('div', { key: bi, className: 'rounded-[40px] border border-white/5 bg-slate-900/20 mb-12 overflow-hidden relative' }, [
+                                // Badge
+                                (isActivity || isTest) && React.createElement('div', { className: 'absolute top-0 right-0 px-6 py-2 rounded-bl-3xl font-black text-[9px] uppercase tracking-widest border-l border-b ' + (isTest ? 'bg-amber-500 text-slate-950 border-amber-600' : 'bg-cyan-500 text-slate-950 border-cyan-600') }, 
+                                    badgeText
+                                ),
+
                                 React.createElement('div', { className: 'px-10 py-5 bg-slate-950/50 border-b border-white/5 font-black uppercase text-[10px] text-slate-500 tracking-widest' }, block.title),
                                 React.createElement('div', { className: 'p-10 md:p-14' }, [
                                     React.createElement('p', { className: 'text-lg text-slate-300 leading-relaxed mb-8' }, block.content),
+                                    
+                                    // Renderizador de TEST
+                                    isTest && block.testQuestions && React.createElement(TestComponent, { 
+                                        questions: block.testQuestions,
+                                        onScore: (score) => updateBlockScore(lesson.id, bi, score)
+                                    }),
+
+                                    // Renderizador de ACTIVIDAD
                                     isActivity && React.createElement('div', { className: 'mt-8 space-y-4' }, [
                                         React.createElement('textarea', { 
                                             placeholder: 'Tu respuesta...',
@@ -239,7 +308,7 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
                                         }),
                                         React.createElement('button', {
                                             onClick: () => startDefense(lesson.title, block.title, responses[lesson.id + '-' + bi]),
-                                            className: 'px-8 py-4 bg-cyan-500 text-slate-950 rounded-2xl font-black text-[10px] uppercase tracking-widest'
+                                            className: 'px-8 py-4 bg-cyan-500 text-slate-950 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all'
                                         }, 'Entregar Actividad (Requiere Validación)')
                                     ])
                                 ])
@@ -248,6 +317,62 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
                     ]) : React.createElement('div', { className: 'text-center py-40 opacity-20' }, 'Selecciona una lección.')
                 ])
             ]);
+        }
+
+        // Componente interno para Tests
+        function TestComponent({ questions, onScore }) {
+            const [answers, setAnswers] = useState({});
+            const [feedback, setFeedback] = useState({});
+
+            const handleAnswer = (qIdx, oIdx) => {
+                if (feedback[qIdx]) return;
+                const isCorrect = oIdx === questions[qIdx].correctAnswerIndex;
+                
+                const newAnswers = { ...answers, [qIdx]: oIdx };
+                setAnswers(newAnswers);
+                setFeedback({ ...feedback, [qIdx]: true });
+
+                let correctCount = 0;
+                questions.forEach((q, i) => {
+                    if (i === qIdx) {
+                        if (isCorrect) correctCount++;
+                    } else if (answers[i] !== undefined) {
+                        if (answers[i] === questions[i].correctAnswerIndex) correctCount++;
+                    }
+                });
+                
+                const blockScore = (correctCount / questions.length) * 100;
+                onScore(blockScore);
+            };
+
+            return React.createElement('div', { className: 'space-y-12 mt-8' }, 
+                questions.map((q, qIdx) => {
+                    const answeredIdx = answers[qIdx];
+                    const show = feedback[qIdx];
+                    const isCorrect = answeredIdx === q.correctAnswerIndex;
+
+                    return React.createElement('div', { key: qIdx, className: 'space-y-4' }, [
+                        React.createElement('h4', { className: 'text-xl font-bold text-white' }, q.question),
+                        React.createElement('div', { className: 'grid gap-3' }, 
+                            q.options.map((opt, oIdx) => {
+                                let style = 'p-4 rounded-xl border border-white/10 text-left hover:bg-white/5 text-sm';
+                                if (show) {
+                                    if (oIdx === q.correctAnswerIndex) style = 'p-4 rounded-xl border border-emerald-500 bg-emerald-500/10 text-emerald-400 text-sm';
+                                    else if (answeredIdx === oIdx) style = 'p-4 rounded-xl border border-red-500 bg-red-500/10 text-red-400 text-sm';
+                                    else style = 'p-4 rounded-xl border border-white/5 opacity-30 text-sm';
+                                }
+                                return React.createElement('button', {
+                                    key: oIdx,
+                                    disabled: show,
+                                    onClick: () => handleAnswer(qIdx, oIdx),
+                                    className: style
+                                }, opt);
+                            })
+                        ),
+                        show && React.createElement('div', { className: 'text-xs text-slate-400 italic' }, isCorrect ? '¡Correcto!' : 'Retroalimentación: ' + q.feedback)
+                    ]);
+                })
+            );
         }
 
         const root = ReactDOM.createRoot(document.getElementById('player-root'));
@@ -356,6 +481,7 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
             <LessonContent 
               lesson={currentLesson}
               unitTitle={currentUnit.title}
+              totalActivitiesInUnit={unitActivities.length}
               isCompleted={completedLessons.has(currentLesson.id)}
               onToggleComplete={() => {
                 const newC = new Set(completedLessons);

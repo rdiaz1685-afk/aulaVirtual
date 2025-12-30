@@ -35,9 +35,27 @@ const getAiClient = () => {
 export async function generateCourseSkeleton(prefs: UserPreferences): Promise<Course> {
   const ai = getAiClient();
   try {
+    // Construimos el contenido incluyendo imágenes si existen
+    const contentParts: any[] = [{ text: SKELETON_PROMPT(prefs) }];
+
+    if (prefs.syllabusImages && prefs.syllabusImages.length > 0) {
+      prefs.syllabusImages.forEach((imgBase64) => {
+        // Extraemos solo la parte base64 sin el encabezado data:image...
+        const base64Data = imgBase64.split(',')[1]; 
+        if (base64Data) {
+          contentParts.push({
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Data
+            }
+          });
+        }
+      });
+    }
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: SKELETON_PROMPT(prefs) }] }],
+      model: "gemini-3-flash-preview", // Usamos un modelo multimodal capaz de ver las imágenes del PDF
+      contents: [{ parts: contentParts }],
       config: {
         responseMimeType: "application/json",
         responseSchema: SKELETON_SCHEMA,

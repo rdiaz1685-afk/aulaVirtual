@@ -8,10 +8,8 @@ import CourseViewer from './components/CourseViewer';
 function App() {
   const [error, setError] = useState<string | null>(null);
   const [loginInput, setLoginInput] = useState("");
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
-  const [appKey, setAppKey] = useState(0); 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [teacher, setTeacher] = useState<TeacherProfile | null>(() => {
@@ -21,23 +19,37 @@ function App() {
     } catch { return null; }
   });
 
-  // La biblioteca se carga dinámicamente según el ID del maestro logueado
   const [savedCourses, setSavedCourses] = useState<Course[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentCourse, setCurrentCourse] = useState<Course | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
+  // Cargar cursos al iniciar o cambiar maestro
   useEffect(() => {
     if (teacher) {
-      const teacherLibraryKey = `profesoria_library_${teacher.id}`;
-      const library = localStorage.getItem(teacherLibraryKey);
-      setSavedCourses(library ? JSON.parse(library) : []);
+      try {
+        const teacherLibraryKey = `profesoria_library_${teacher.id}`;
+        const library = localStorage.getItem(teacherLibraryKey);
+        setSavedCourses(library ? JSON.parse(library) : []);
+      } catch (e) {
+        console.error("Error cargando biblioteca:", e);
+        setSavedCourses([]);
+      }
     } else {
       setSavedCourses([]);
     }
   }, [teacher]);
 
+  // Guardar cursos cuando cambian
   useEffect(() => {
     if (teacher) {
       const teacherLibraryKey = `profesoria_library_${teacher.id}`;
-      localStorage.setItem(teacherLibraryKey, JSON.stringify(savedCourses));
+      try {
+        localStorage.setItem(teacherLibraryKey, JSON.stringify(savedCourses));
+      } catch (e) {
+        console.error("Storage Full or Error:", e);
+        // No mostramos alerta para evitar parpadeo o loop, solo log.
+      }
     }
   }, [savedCourses, teacher]);
 
@@ -55,15 +67,10 @@ function App() {
 
   const executeLogout = () => {
     setShowLogoutConfirm(false);
-    setIsLoggingOut(true);
     localStorage.removeItem('profesoria_teacher_session');
-    setTimeout(() => {
-      setTeacher(null);
-      setCurrentCourse(null);
-      setShowForm(false);
-      setIsLoggingOut(false);
-      setAppKey(prev => prev + 1);
-    }, 1500);
+    setTeacher(null);
+    setCurrentCourse(null);
+    setShowForm(false);
   };
 
   const deleteCourse = () => {
@@ -118,10 +125,6 @@ function App() {
     if (e.target) e.target.value = "";
   };
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [currentCourse, setCurrentCourse] = useState<Course | null>(null);
-  const [showForm, setShowForm] = useState(false);
-
   const handleGenerate = async (prefs: UserPreferences) => {
     setIsGenerating(true);
     setError(null);
@@ -132,6 +135,7 @@ function App() {
       setShowForm(false);
     } catch (err: any) { 
       setError(err.message);
+      alert("Error generando curso: " + err.message);
     } finally { 
       setIsGenerating(false); 
     }
@@ -143,9 +147,8 @@ function App() {
   };
 
   return (
-    <div key={appKey} className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#020617] text-slate-200 flex flex-col font-sans">
       
-      {/* Modals de confirmación (Igual que antes) */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[11000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-slate-900 border border-white/10 p-10 rounded-[40px] max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95 duration-200">
