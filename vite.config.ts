@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Configuración optimizada para Vercel Deploy
 export default defineConfig({
   plugins: [react()],
   define: {
@@ -12,7 +13,8 @@ export default defineConfig({
     sourcemap: false,
     target: 'esnext',
     commonjsOptions: {
-      transformMixedEsModules: true
+      transformMixedEsModules: true, // Crucial para @google/genai
+      include: [/node_modules/]
     }
   }
 });

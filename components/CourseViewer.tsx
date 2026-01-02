@@ -1,9 +1,10 @@
 
-import React, { useState, useMemo } from 'react';
-import { Course, Grade, LessonBlock } from '../types';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Course, LessonBlock, AuthorizedStudent, StudentSubmission } from '../types';
 import { generateUnitContent } from '../geminiService';
 import LessonContent from './LessonContent';
 import UnitPortfolio from './UnitPortfolio';
+import DidacticInstrumentationView from './DidacticInstrumentationView';
 
 interface CourseViewerProps {
   course: Course;
@@ -14,433 +15,133 @@ interface CourseViewerProps {
 const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCourse }) => {
   const [activeUnitIdx, setActiveUnitIdx] = useState(0);
   const [activeLessonIdx, setActiveLessonIdx] = useState(0);
-  const [viewMode, setViewMode] = useState<'study' | 'portfolio'>('study');
+  const [viewMode, setViewMode] = useState<'study' | 'portfolio' | 'instrumentation'>('study');
   const [isBuildingUnit, setIsBuildingUnit] = useState(false);
   const [buildStatus, setBuildStatus] = useState("");
+  const [loadTimer, setLoadTimer] = useState(0);
   const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set());
+  
+  const timerRef = useRef<any>(null);
 
   const units = course.units || [];
   const currentUnit = units[activeUnitIdx] || units[0];
   const lessons = currentUnit?.lessons || [];
   const currentLesson = lessons[activeLessonIdx];
 
+  const hasGenerationError = lessons.some(l => l.title === "Error de Generación");
+
+  useEffect(() => {
+    if (isBuildingUnit) {
+      setLoadTimer(0);
+      timerRef.current = setInterval(() => setLoadTimer(p => p + 1), 1000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [isBuildingUnit]);
+
   const unitActivities = useMemo(() => {
     const activities: {lessonTitle: string, block: LessonBlock, blockIdx: number}[] = [];
     if (!currentUnit?.lessons) return [];
-    
     currentUnit.lessons.forEach((lesson) => {
-      lesson.blocks.forEach((block, bIdx) => {
-        const type = (block.type || '').toLowerCase();
-        const title = (block.title || "").toLowerCase();
-        if (type === 'activity' || title.includes('actividad') || title.includes('cuadro')) {
-          activities.push({ lessonTitle: lesson.title, block, blockIdx: bIdx });
-        }
+      lesson.blocks?.forEach((block, bIdx) => {
+        if (block.type === 'activity') activities.push({ lessonTitle: lesson.title, block, blockIdx: bIdx });
       });
     });
     return activities;
   }, [currentUnit]);
 
-  const handleBuildUnit = async (idx: number) => {
+  const handleBuildUnit = useCallback(async (idx: number) => {
     const unitToBuild = units[idx];
     if (!unitToBuild || isBuildingUnit) return;
     
     setIsBuildingUnit(true);
-    setBuildStatus(`Diseñando Estructura: ${unitToBuild.title}...`);
+    setBuildStatus(`DISEÑANDO: ${unitToBuild.title.toUpperCase()}...`);
     
     try {
       const generatedLessons = await generateUnitContent(unitToBuild, "Ingeniería Superior");
       const updatedUnits = [...units];
       updatedUnits[idx] = { ...unitToBuild, lessons: generatedLessons };
-      onUpdateCourse({ ...course, units: updatedUnits });
+      
       setActiveLessonIdx(0);
       setViewMode('study');
-    } catch (e: any) {
-      alert(`Error de Conexión: ${e.message}`);
+      onUpdateCourse({ ...course, units: updatedUnits });
+    } catch (e) {
+      alert("Error de red o de la IA de Google. Reintenta por favor.");
     } finally {
       setIsBuildingUnit(false);
+      setBuildStatus("");
     }
+  }, [units, course, onUpdateCourse, isBuildingUnit]);
+
+  const handleUpdateRoster = (roster: AuthorizedStudent[]) => {
+    onUpdateCourse({ ...course, studentList: roster });
   };
 
-  const handleExportHTML = () => {
-    const courseData = JSON.stringify(course);
-    
-    const htmlTemplate = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aula Virtual Alumno - ${course.title}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-    <style>
-        body { background-color: #020617; color: white; font-family: 'Inter', sans-serif; overflow-x: hidden; }
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #020617; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-        .fade-entry { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .timer-blink { animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-    </style>
-</head>
-<body class="h-screen overflow-hidden">
-    <div id="player-root" class="h-full w-full"></div>
+  const handleUpdateGrades = (grades: StudentSubmission[]) => {
+    onUpdateCourse({ ...course, masterGrades: grades });
+  };
 
-    <script type="module">
-        import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.2.0';
-        import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
+  const exportStudentHtml = () => {
+    const hasContent = course.units.some(u => u.lessons?.length > 0 && u.lessons[0].title !== "Error de Generación");
+    if (!hasContent) return alert("Diseña al menos una unidad para poder exportar.");
 
-        const COURSE_DATA = ${courseData};
-
-        function StudentApp() {
-            const [uIdx, setUIdx] = useState(0);
-            const [lIdx, setLIdx] = useState(0);
-            const [completed, setCompleted] = useState(new Set());
-            const [responses, setResponses] = useState({});
-            
-            // Estado para Tests (Quizzes)
-            const [testScores, setTestScores] = useState({}); 
-            
-            const [showDefense, setShowDefense] = useState(false);
-            const [defenseData, setDefenseData] = useState({ lessonTitle: '', blockTitle: '', text: '' });
-            const [reflection, setReflection] = useState('');
-            const [timeLeft, setTimeLeft] = useState(180);
-            const [controlNum, setControlNum] = useState('');
-            const [studentName, setStudentName] = useState('');
-
-            const unit = COURSE_DATA.units[uIdx];
-            const lesson = unit?.lessons[lIdx];
-
-            // 1. Calcular total de actividades en la unidad actual
-            const unitActivityStats = useMemo(() => {
-                if (!unit) return { count: 0, pointsPerActivity: 0 };
-                let count = 0;
-                unit.lessons.forEach(l => {
-                    l.blocks.forEach(b => {
-                        const type = (b.type || '').toLowerCase();
-                        const title = (b.title || '').toLowerCase();
-                        if (type === 'activity' || title.includes('actividad') || title.includes('cuadro')) {
-                            count++;
-                        }
-                    });
-                });
-                // Dividir 90 puntos entre el número de actividades
-                const pointsPerActivity = count > 0 ? (90 / count).toFixed(1) : 0;
-                return { count, pointsPerActivity };
-            }, [unit]);
-
-
-            // Cálculo de Calificación en Tiempo Real
-            const currentGrade = useMemo(() => {
-                if (!unit) return 0;
-                let totalTests = 0;
-                let totalTestScore = 0;
-                
-                unit.lessons.forEach(l => {
-                    l.blocks.forEach((b, bIdx) => {
-                        if (b.type === 'test') {
-                            totalTests++;
-                            const key = l.id + '-' + bIdx;
-                            if (testScores[key] !== undefined) {
-                                totalTestScore += testScores[key];
-                            }
-                        }
-                    });
-                });
-
-                const avgTest = totalTests > 0 ? (totalTestScore / totalTests) : 100;
-                const pointsFromTests = (avgTest / 100) * 10;
-                
-                return pointsFromTests.toFixed(1);
-            }, [unit, testScores]);
-
-            useEffect(() => {
-                let timer;
-                if (showDefense && timeLeft > 0) {
-                    timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-                } else if (timeLeft === 0) {
-                    alert("¡Tiempo agotado! Debes ser más rápido para asegurar la autenticidad. Inténtalo de nuevo.");
-                    setShowDefense(false);
-                    setTimeLeft(180);
-                }
-                return () => clearInterval(timer);
-            }, [showDefense, timeLeft]);
-
-            const startDefense = (lessonTitle, blockTitle, text) => {
-                const c = prompt("Número de Control:");
-                if (!c) return;
-                const n = prompt("Nombre Completo:");
-                if (!n) return;
-                setControlNum(c);
-                setStudentName(n);
-                setDefenseData({ lessonTitle, blockTitle, text });
-                setShowDefense(true);
-                setTimeLeft(180);
-            };
-
-            const finalizeTask = () => {
-                if (reflection.length < 50) {
-                    alert("Tu reflexión es muy corta. Explica mejor tu proceso para validar tu aprendizaje.");
-                    return;
-                }
-
-                const data = { 
-                    studentName, 
-                    studentControlNumber: controlNum,
-                    lessonTitle: defenseData.lessonTitle, 
-                    activityTitle: defenseData.blockTitle, 
-                    content: defenseData.text,
-                    reflection: reflection,
-                    timestamp: Date.now(),
-                    aiScore: 0,
-                    authenticityScore: 0 
-                };
-
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'Entrega_' + controlNum + '.json';
-                a.click();
-                setShowDefense(false);
-                setReflection('');
-                alert("¡Entrega validada y descargada!");
-            };
-
-            const updateBlockScore = (lessonId, blockIdx, score) => {
-                setTestScores(prev => ({
-                    ...prev,
-                    [lessonId + '-' + blockIdx]: score
-                }));
-            };
-
-            return React.createElement('div', { className: 'flex h-screen bg-[#020617]' }, [
-                
-                // Modal Defensa
-                showDefense && React.createElement('div', { className: 'fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-6' }, [
-                    React.createElement('div', { className: 'bg-slate-900 border border-white/10 p-12 rounded-[50px] max-w-2xl w-full shadow-2xl animate-in zoom-in-95' }, [
-                         React.createElement('div', { className: 'flex justify-between items-center mb-8' }, [
-                            React.createElement('h2', { className: 'text-2xl font-black text-white uppercase' }, 'Validación'),
-                            React.createElement('p', { className: 'text-3xl font-black text-white' }, Math.floor(timeLeft / 60) + ':' + (timeLeft % 60).toString().padStart(2, '0'))
-                        ]),
-                        React.createElement('textarea', { 
-                            value: reflection,
-                            onChange: (e) => setReflection(e.target.value),
-                            placeholder: 'Defensa...',
-                            className: 'w-full h-48 bg-black/40 border border-white/10 rounded-3xl p-8 text-white mb-6'
-                        }),
-                        React.createElement('button', { onClick: finalizeTask, className: 'w-full py-5 bg-cyan-500 text-slate-950 rounded-2xl font-black uppercase' }, 'Enviar')
-                    ])
-                ]),
-
-                // Sidebar
-                React.createElement('aside', { className: 'w-80 bg-slate-950 border-r border-white/5 flex flex-col shrink-0' }, [
-                    React.createElement('div', { className: 'p-8 border-b border-white/5 bg-slate-900/40' }, [
-                        React.createElement('p', { className: 'text-[9px] font-black text-cyan-500 uppercase tracking-widest' }, 'Plataforma Alumno'),
-                        React.createElement('h1', { className: 'text-md font-black uppercase tracking-tighter mt-2' }, COURSE_DATA.title)
-                    ]),
-                    
-                    // WIDGET DE CALIFICACIÓN
-                    React.createElement('div', { className: 'mx-6 mt-6 p-6 bg-slate-900 rounded-3xl border border-white/5' }, [
-                         React.createElement('p', { className: 'text-[8px] font-black text-slate-500 uppercase tracking-widest mb-2' }, 'Tu Desempeño (Unidad Actual)'),
-                         React.createElement('div', { className: 'flex items-end gap-2' }, [
-                            React.createElement('span', { className: 'text-4xl font-black text-white' }, currentGrade),
-                            React.createElement('span', { className: 'text-xs font-bold text-slate-500 mb-2' }, '/ 10 pts (Tests)')
-                         ]),
-                         React.createElement('div', { className: 'w-full h-2 bg-slate-800 rounded-full mt-3 overflow-hidden' }, 
-                            React.createElement('div', { className: 'h-full bg-amber-500 transition-all duration-500', style: { width: (currentGrade * 10) + '%' } })
-                         ),
-                         React.createElement('p', { className: 'text-[8px] text-amber-500 mt-2 font-bold' }, '* Las Prácticas suman los otros 90 pts.')
-                    ]),
-
-                    React.createElement('div', { className: 'flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar' }, 
-                        COURSE_DATA.units.map((u, ui) => React.createElement('div', { key: ui }, [
-                            React.createElement('button', { 
-                                onClick: () => { setUIdx(ui); setLIdx(0); },
-                                className: 'w-full text-left p-4 rounded-2xl transition-all ' + (uIdx === ui ? 'bg-white/5 border border-white/10' : 'opacity-40 hover:opacity-100')
-                            }, React.createElement('p', { className: 'text-xs font-bold text-white' }, u.title)),
-                            uIdx === ui && u.lessons.map((l, li) => React.createElement('button', {
-                                key: li,
-                                onClick: () => setLIdx(li),
-                                className: 'w-full text-left p-3 ml-4 mt-1 rounded-xl text-[10px] font-black uppercase transition-all ' + (lIdx === li ? 'bg-cyan-500 text-slate-950' : 'text-slate-500 hover:text-white')
-                            }, l.title))
-                        ]))
-                    )
-                ]),
-
-                // Main Content
-                React.createElement('main', { className: 'flex-1 overflow-y-auto custom-scrollbar p-12 lg:p-24' }, [
-                    lesson ? React.createElement('div', { key: lesson.id, className: 'max-w-4xl mx-auto fade-entry' }, [
-                        React.createElement('h2', { className: 'text-5xl font-black mb-16 uppercase tracking-tighter' }, lesson.title),
-                        lesson.blocks.map((block, bi) => {
-                            const titleLower = (block.title || '').toLowerCase();
-                            const isActivity = block.type === 'activity' || titleLower.includes('actividad') || titleLower.includes('cuadro');
-                            const isTest = block.type === 'test';
-
-                            // Texto del Badge
-                            let badgeText = '';
-                            if (isTest) badgeText = 'Valor: 10% (Global Quiz)';
-                            else if (isActivity) badgeText = 'Valor: ' + unitActivityStats.pointsPerActivity + ' Pts';
-
-                            return React.createElement('div', { key: bi, className: 'rounded-[40px] border border-white/5 bg-slate-900/20 mb-12 overflow-hidden relative' }, [
-                                // Badge
-                                (isActivity || isTest) && React.createElement('div', { className: 'absolute top-0 right-0 px-6 py-2 rounded-bl-3xl font-black text-[9px] uppercase tracking-widest border-l border-b ' + (isTest ? 'bg-amber-500 text-slate-950 border-amber-600' : 'bg-cyan-500 text-slate-950 border-cyan-600') }, 
-                                    badgeText
-                                ),
-
-                                React.createElement('div', { className: 'px-10 py-5 bg-slate-950/50 border-b border-white/5 font-black uppercase text-[10px] text-slate-500 tracking-widest' }, block.title),
-                                React.createElement('div', { className: 'p-10 md:p-14' }, [
-                                    React.createElement('p', { className: 'text-lg text-slate-300 leading-relaxed mb-8' }, block.content),
-                                    
-                                    // Renderizador de TEST
-                                    isTest && block.testQuestions && React.createElement(TestComponent, { 
-                                        questions: block.testQuestions,
-                                        onScore: (score) => updateBlockScore(lesson.id, bi, score)
-                                    }),
-
-                                    // Renderizador de ACTIVIDAD
-                                    isActivity && React.createElement('div', { className: 'mt-8 space-y-4' }, [
-                                        React.createElement('textarea', { 
-                                            placeholder: 'Tu respuesta...',
-                                            className: 'w-full h-40 bg-black/40 border border-white/5 rounded-3xl p-8 text-white outline-none focus:border-cyan-500',
-                                            onChange: (e) => setResponses({...responses, [lesson.id + '-' + bi]: e.target.value})
-                                        }),
-                                        React.createElement('button', {
-                                            onClick: () => startDefense(lesson.title, block.title, responses[lesson.id + '-' + bi]),
-                                            className: 'px-8 py-4 bg-cyan-500 text-slate-950 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all'
-                                        }, 'Entregar Actividad (Requiere Validación)')
-                                    ])
-                                ])
-                            ]);
-                        })
-                    ]) : React.createElement('div', { className: 'text-center py-40 opacity-20' }, 'Selecciona una lección.')
-                ])
-            ]);
-        }
-
-        // Componente interno para Tests
-        function TestComponent({ questions, onScore }) {
-            const [answers, setAnswers] = useState({});
-            const [feedback, setFeedback] = useState({});
-
-            const handleAnswer = (qIdx, oIdx) => {
-                if (feedback[qIdx]) return;
-                const isCorrect = oIdx === questions[qIdx].correctAnswerIndex;
-                
-                const newAnswers = { ...answers, [qIdx]: oIdx };
-                setAnswers(newAnswers);
-                setFeedback({ ...feedback, [qIdx]: true });
-
-                let correctCount = 0;
-                questions.forEach((q, i) => {
-                    if (i === qIdx) {
-                        if (isCorrect) correctCount++;
-                    } else if (answers[i] !== undefined) {
-                        if (answers[i] === questions[i].correctAnswerIndex) correctCount++;
-                    }
-                });
-                
-                const blockScore = (correctCount / questions.length) * 100;
-                onScore(blockScore);
-            };
-
-            return React.createElement('div', { className: 'space-y-12 mt-8' }, 
-                questions.map((q, qIdx) => {
-                    const answeredIdx = answers[qIdx];
-                    const show = feedback[qIdx];
-                    const isCorrect = answeredIdx === q.correctAnswerIndex;
-
-                    return React.createElement('div', { key: qIdx, className: 'space-y-4' }, [
-                        React.createElement('h4', { className: 'text-xl font-bold text-white' }, q.question),
-                        React.createElement('div', { className: 'grid gap-3' }, 
-                            q.options.map((opt, oIdx) => {
-                                let style = 'p-4 rounded-xl border border-white/10 text-left hover:bg-white/5 text-sm';
-                                if (show) {
-                                    if (oIdx === q.correctAnswerIndex) style = 'p-4 rounded-xl border border-emerald-500 bg-emerald-500/10 text-emerald-400 text-sm';
-                                    else if (answeredIdx === oIdx) style = 'p-4 rounded-xl border border-red-500 bg-red-500/10 text-red-400 text-sm';
-                                    else style = 'p-4 rounded-xl border border-white/5 opacity-30 text-sm';
-                                }
-                                return React.createElement('button', {
-                                    key: oIdx,
-                                    disabled: show,
-                                    onClick: () => handleAnswer(qIdx, oIdx),
-                                    className: style
-                                }, opt);
-                            })
-                        ),
-                        show && React.createElement('div', { className: 'text-xs text-slate-400 italic' }, isCorrect ? '¡Correcto!' : 'Retroalimentación: ' + q.feedback)
-                    ]);
-                })
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('player-root'));
-        root.render(React.createElement(StudentApp));
-    <\/script>
-</body>
-</html>
-    `;
-
-    const blob = new Blob([htmlTemplate], { type: 'text/html' });
+    const blob = new Blob([generateHtmlTemplate(course)], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", url);
-    downloadAnchorNode.setAttribute("download", `Aula_${course.title.replace(/\s+/g, '_')}.html`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Aula_Alumno_${course.title.replace(/\s+/g, '_')}.html`;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="flex h-screen bg-[#020617] overflow-hidden">
-      <aside className="w-80 bg-slate-950 border-r border-white/5 flex flex-col h-full z-30 shadow-2xl">
+    <div className="flex h-screen bg-[#020617] overflow-hidden animate-in fade-in duration-300">
+      <aside className={`w-80 bg-slate-950 border-r border-white/5 flex flex-col h-full z-30 shadow-2xl shrink-0 ${isBuildingUnit ? 'opacity-30 pointer-events-none' : ''}`}>
         <div className="p-8 border-b border-white/5 bg-slate-900/40">
-          <button onClick={onExit} className="text-[10px] font-black text-cyan-500 uppercase tracking-widest mb-4 hover:text-white transition-colors">← Volver a Biblioteca</button>
+          <button onClick={onExit} className="text-[10px] font-black text-cyan-500 uppercase mb-4 hover:text-white transition-colors">← SALIR AL MENÚ</button>
           <h2 className="text-xl font-black text-white uppercase tracking-tighter leading-tight line-clamp-2">{course.title}</h2>
         </div>
         
-        <nav className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-          {lessons.length > 0 && (
+        <nav className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <button 
-              onClick={() => setViewMode('portfolio')}
-              className={`w-full p-5 rounded-[25px] border-2 flex items-center gap-4 transition-all ${
-                viewMode === 'portfolio' ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10' : 'border-white/5 bg-slate-900'
+              onClick={() => setViewMode('instrumentation')} 
+              className={`flex flex-col items-center justify-center py-5 px-2 rounded-3xl border transition-all hover:scale-[1.02] active:scale-95 ${
+                viewMode === 'instrumentation' ? 'border-amber-500 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.1)]' : 'border-white/5 bg-slate-900'
               }`}
             >
-              <span className="text-2xl">📥</span>
-              <div className="text-left">
-                <p className="text-[9px] font-black uppercase text-cyan-500 mb-1">Evidencias</p>
-                <p className="text-xs font-black text-white uppercase">Revisión de Alumnos</p>
-              </div>
+              <span className="text-xl mb-2">📄</span>
+              <span className={`text-[8px] font-black uppercase tracking-widest ${viewMode === 'instrumentation' ? 'text-amber-500' : 'text-slate-500'}`}>Instrumentación</span>
             </button>
-          )}
+            <button 
+              onClick={() => setViewMode('portfolio')} 
+              className={`flex flex-col items-center justify-center py-5 px-2 rounded-3xl border transition-all hover:scale-[1.02] active:scale-95 ${
+                viewMode === 'portfolio' ? 'border-cyan-500 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.1)]' : 'border-white/5 bg-slate-900'
+              }`}
+            >
+              <span className="text-xl mb-2">📥</span>
+              <span className={`text-[8px] font-black uppercase tracking-widest ${viewMode === 'portfolio' ? 'text-cyan-400' : 'text-slate-500'}`}>Portafolio</span>
+            </button>
+          </div>
 
-          <div className="space-y-4 pt-4">
-            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest ml-4">Unidades</p>
+          <div className="space-y-4 pt-4 border-t border-white/5">
+            <p className="px-2 text-[9px] font-black text-slate-600 uppercase tracking-widest">Contenido del Curso</p>
             {units.map((unit, uIdx) => (
-              <div key={uIdx} className="space-y-1">
+              <div key={unit.id} className="space-y-1">
                 <button 
-                  onClick={() => { setActiveUnitIdx(uIdx); setViewMode('study'); }}
+                  onClick={() => { setActiveUnitIdx(uIdx); setViewMode('study'); setActiveLessonIdx(0); }}
                   className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                    activeUnitIdx === uIdx && viewMode === 'study' ? 'bg-white/5 border-white/20' : 'border-transparent opacity-40 hover:opacity-100'
+                    activeUnitIdx === uIdx && viewMode === 'study' ? 'bg-white/5 border-white/20' : 'border-transparent opacity-50 hover:opacity-100 hover:bg-white/5'
                   }`}
                 >
-                  <p className="text-xs font-bold text-slate-200">{unit.title}</p>
+                  <p className="text-[10px] font-bold text-slate-200 uppercase tracking-tighter line-clamp-2">{unit.title}</p>
                 </button>
-                
-                {activeUnitIdx === uIdx && viewMode === 'study' && unit.lessons.length > 0 && (
-                  <div className="ml-4 space-y-1 border-l border-white/10 pl-4 py-1">
+                {activeUnitIdx === uIdx && viewMode === 'study' && unit.lessons?.length > 0 && unit.lessons[0].title !== "Error de Generación" && (
+                  <div className="ml-4 space-y-1 border-l border-white/10 pl-4 py-1 animate-in slide-in-from-left-2 duration-300">
                     {unit.lessons.map((l, lIdx) => (
-                      <button 
-                        key={lIdx} 
-                        onClick={() => setActiveLessonIdx(lIdx)} 
-                        className={`w-full text-left p-3 rounded-xl text-[10px] font-black uppercase transition-all flex justify-between items-center ${
-                          activeLessonIdx === lIdx ? 'bg-cyan-500 text-slate-950 shadow-md' : 'text-slate-500 hover:text-white'
-                        }`}
-                      >
-                        <span className="truncate">{l.title}</span>
+                      <button key={l.id} onClick={() => setActiveLessonIdx(lIdx)} className={`w-full text-left p-2 rounded-lg text-[9px] font-black uppercase transition-colors ${activeLessonIdx === lIdx ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}>
+                        {l.title}
                       </button>
                     ))}
                   </div>
@@ -450,51 +151,61 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
           </div>
         </nav>
 
-        <div className="p-6 bg-slate-950 border-t border-white/10 space-y-2">
-          <button 
-            onClick={() => handleBuildUnit(activeUnitIdx)} 
-            disabled={isBuildingUnit} 
-            className="w-full py-5 bg-cyan-500 text-slate-950 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-cyan-400 disabled:opacity-50"
-          >
-            {isBuildingUnit ? '🔨 SINCRONIZANDO...' : '🔨 CONSTRUIR UNIDAD'}
+        <div className="p-6 bg-slate-950 border-t border-white/10 space-y-3">
+          <button onClick={exportStudentHtml} className="w-full py-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-slate-950 transition-all shadow-lg active:scale-95">
+            GENERAR AULA ALUMNO
           </button>
-          <button onClick={handleExportHTML} className="w-full py-4 bg-white text-slate-950 rounded-2xl font-black uppercase text-[9px] tracking-widest hover:bg-slate-200 transition-all shadow-xl">EXPORTAR AULA (HTML)</button>
+          <button onClick={() => handleBuildUnit(activeUnitIdx)} disabled={isBuildingUnit}
+            className={`w-full py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 ${hasGenerationError ? 'bg-amber-600 text-white' : 'bg-cyan-500 text-slate-950'} disabled:opacity-50`}>
+            {isBuildingUnit ? 'DISEÑANDO...' : (hasGenerationError ? 'REINTENTAR DISEÑO' : 'DISEÑAR ESTA UNIDAD')}
+          </button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto bg-slate-950 custom-scrollbar">
-        <div className="p-10 lg:p-20">
-          {isBuildingUnit ? (
-            <div className="max-w-xl mx-auto py-40 text-center animate-pulse">
+      <main className="flex-1 overflow-y-auto bg-slate-950 custom-scrollbar relative">
+        <div className="p-10 lg:p-20 max-w-5xl mx-auto">
+          {viewMode === 'instrumentation' ? (
+            <DidacticInstrumentationView course={course} />
+          ) : isBuildingUnit ? (
+            <div className="py-40 text-center animate-in fade-in duration-500">
                <div className="spinner mb-10"></div>
-               <h2 className="text-3xl font-black text-white uppercase mb-4 tracking-tighter">Conectando con Nodo IA</h2>
-               <p className="text-cyan-500 uppercase text-[10px] font-black tracking-[0.3em]">{buildStatus}</p>
+               <h2 className="text-4xl font-black text-white uppercase tracking-tighter mb-4">{buildStatus}</h2>
+               <div className="space-y-4">
+                 <p className="text-cyan-500 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">
+                   Procesando: {loadTimer}s
+                 </p>
+               </div>
             </div>
           ) : viewMode === 'portfolio' ? (
             <UnitPortfolio 
               unitTitle={currentUnit.title} 
               activities={unitActivities} 
-              onGradeUpdate={(g) => onUpdateCourse(course)}
-              grades={[]}
+              studentList={course.studentList || []}
+              masterGrades={course.masterGrades || []}
+              onUpdateRoster={handleUpdateRoster}
+              onUpdateGrades={handleUpdateGrades}
             />
-          ) : currentLesson ? (
+          ) : lessons.length > 0 ? (
             <LessonContent 
-              lesson={currentLesson}
+              key={`${currentUnit.id}-${activeLessonIdx}`}
+              lesson={currentLesson || lessons[0]}
               unitTitle={currentUnit.title}
               totalActivitiesInUnit={unitActivities.length}
-              isCompleted={completedLessons.has(currentLesson.id)}
+              isCompleted={completedLessons.has(currentLesson?.id || '')}
               onToggleComplete={() => {
                 const newC = new Set(completedLessons);
-                newC.has(currentLesson.id) ? newC.delete(currentLesson.id) : newC.add(currentLesson.id);
-                setCompletedLessons(newC);
+                if (currentLesson) {
+                  newC.has(currentLesson.id) ? newC.delete(currentLesson.id) : newC.add(currentLesson.id);
+                  setCompletedLessons(newC);
+                }
               }}
-              onGradeUpdate={(g) => {}}
+              onGradeUpdate={() => {}}
             />
           ) : (
-            <div className="max-w-xl mx-auto py-40 text-center bg-slate-900/20 rounded-[50px] border border-white/5">
-               <div className="text-5xl mb-10">🏗️</div>
-               <h2 className="text-2xl font-black text-white uppercase mb-4">Unidad Vacía</h2>
-               <p className="text-slate-500 uppercase text-[10px] font-black tracking-widest">Utiliza el botón para generar el contenido académico.</p>
+            <div className="py-40 text-center bg-slate-900/20 rounded-[50px] border border-white/5">
+               <div className="text-5xl mb-10 opacity-30">🏗️</div>
+               <h2 className="text-2xl font-black text-white uppercase mb-4 tracking-tighter">Unidad Vacía</h2>
+               <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-10">Haz clic en "Diseñar esta unidad" para generar el contenido técnico.</p>
             </div>
           )}
         </div>
@@ -502,5 +213,335 @@ const CourseViewer: React.FC<CourseViewerProps> = ({ course, onExit, onUpdateCou
     </div>
   );
 };
+
+function generateHtmlTemplate(course: Course) {
+  // La plantilla HTML del alumno se mantiene similar, pero enviando el objeto course actualizado
+  return `
+<!DOCTYPE html>
+<html lang="es" translate="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google" content="notranslate">
+    <title>AULA: ${course.title}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { background: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; }
+        .card { background: #1e293b; border-radius: 2.5rem; padding: 2.5rem; margin-bottom: 2.5rem; border: 1px solid rgba(255,255,255,0.05); position: relative; overflow: hidden; }
+        .weight-badge { position: absolute; top: 0; right: 0; background: #06b6d4; color: #020617; padding: 0.6rem 1.4rem; font-size: 0.65rem; font-weight: 900; border-bottom-left-radius: 1.5rem; text-transform: uppercase; letter-spacing: 0.15rem; z-index: 10; }
+        .weight-badge.test { background: #f59e0b; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+        
+        .option-btn { width: 100%; text-align: left; padding: 1.4rem 1.6rem; border-radius: 1.2rem; border: 2px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.2); transition: all 0.3s; font-weight: 700; margin-bottom: 0.8rem; color: #94a3b8; font-size: 0.9rem; }
+        .option-btn:hover:not(:disabled) { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); transform: translateY(-2px); }
+        .option-btn.correct { background: #064e3b; border-color: #10b981; color: #10b981; }
+        .option-btn.wrong { background: #450a0a; border-color: #ef4444; color: #ef4444; }
+        
+        .input-field { width: 100%; background: #0f172a; border: 2px solid rgba(255,255,255,0.05); border-radius: 1rem; padding: 1rem; color: white; outline: none; transition: all 0.3s; font-size: 0.9rem; font-weight: 500; }
+        .input-field:focus { border-color: #06b6d4; background: #020617; }
+        .label-style { font-size: 0.6rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2rem; color: #64748b; margin-bottom: 0.6rem; display: block; }
+        
+        .file-drop { border: 2px dashed rgba(255,255,255,0.1); border-radius: 1.5rem; padding: 2rem; text-align: center; background: rgba(0,0,0,0.2); cursor: pointer; transition: all 0.3s; }
+        .file-drop:hover { border-color: #06b6d4; background: rgba(6,182,212,0.05); }
+        .preview-img { max-height: 220px; border-radius: 1rem; margin-top: 1.5rem; display: none; border: 2px solid #06b6d4; object-fit: contain; }
+        
+        .results-panel { background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 3rem; padding: 2.5rem; margin-top: 5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        .final-btn { width: 100%; padding: 2rem; border-radius: 2rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.3rem; font-size: 0.7rem; transition: all 0.4s; cursor: pointer; }
+        .final-btn.pending { background: white; color: #020617; }
+        .final-btn.completed { background: #10b981; color: #020617; }
+        .final-btn:hover { transform: scale(1.02); filter: brightness(1.1); }
+        .final-btn:active { transform: scale(0.98); }
+
+        .completed-mark { width: 14px; height: 14px; background: #10b981; border-radius: 4px; display: inline-block; margin-right: 8px; font-size: 8px; text-align: center; color: #020617; line-height: 14px; }
+
+        * { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+    <aside class="w-80 border-r border-white/5 p-8 flex flex-col bg-slate-950 shrink-0 shadow-2xl z-50">
+        <div class="mb-10">
+          <div class="w-10 h-10 bg-cyan-500 rounded-xl mb-4 flex items-center justify-center font-black text-slate-950 text-sm">A</div>
+          <h1 class="text-lg font-black uppercase tracking-tighter leading-tight text-white">${course.title}</h1>
+          <p class="text-[8px] font-black text-slate-500 uppercase tracking-widest mt-2">Plataforma Alumno TecNM</p>
+        </div>
+        <nav id="nav" class="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2"></nav>
+        <div class="pt-6 border-t border-white/5">
+            <p class="text-[7px] font-black text-slate-700 uppercase tracking-widest text-center">Engine v2.9 Student • 2025</p>
+        </div>
+    </aside>
+    
+    <main id="content" class="flex-1 overflow-y-auto p-10 lg:p-20 bg-slate-900/10 custom-scrollbar relative">
+        <div id="content-inner" class="max-w-4xl mx-auto"></div>
+    </main>
+
+    <script>
+        const course = ${JSON.stringify(course)};
+        const nav = document.getElementById('nav');
+        const inner = document.getElementById('content-inner');
+        const attachedFiles = {};
+        
+        let lessonAnswers = {}; // { blockKey-qIdx: oIdx }
+        let completedSet = new Set(JSON.parse(safeGet('completed_lessons') || '[]'));
+
+        function safeSet(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+        function safeGet(key) { try { return localStorage.getItem(key); } catch(e) { return null; } }
+
+        function updateSidebar() {
+            nav.innerHTML = '';
+            course.units.forEach((u, uIdx) => {
+                if (!u.lessons || u.lessons.length === 0 || u.lessons[0].title === "Error de Generación") return;
+                const container = document.createElement('div');
+                container.className = "mb-8";
+                container.innerHTML = \`<p class="text-[9px] font-black text-cyan-500 uppercase mb-3 tracking-[0.2em] opacity-60">UNIDAD \${uIdx + 1}</p>
+                                         <p class="text-[10px] font-black text-white uppercase mb-4 leading-tight">\${u.title}</p>\`;
+                
+                u.lessons.forEach((l, lIdx) => {
+                    const isDone = completedSet.has(l.id);
+                    const btn = document.createElement('button');
+                    btn.className = "w-full text-left p-3 text-[10px] font-bold uppercase text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all mb-1 flex items-center";
+                    btn.innerHTML = \`\${isDone ? '<span class="completed-mark">✓</span>' : ''} \${l.title}\`;
+                    btn.onclick = () => showLesson(uIdx, lIdx);
+                    container.appendChild(btn);
+                });
+                nav.appendChild(container);
+            });
+        }
+
+        function calculateScore(lesson) {
+            let correct = 0;
+            let total = 0;
+            lesson.blocks.forEach((b, bIdx) => {
+                if (b.type === 'test' && b.testQuestions) {
+                    b.testQuestions.forEach((q, qIdx) => {
+                        total++;
+                        const ans = lessonAnswers[\`\${bIdx}-\${qIdx}\`];
+                        if (ans !== undefined && ans === q.correctAnswerIndex) correct++;
+                    });
+                }
+            });
+            return { correct, total };
+        }
+
+        function showLesson(uIdx, lIdx) {
+            const lesson = course.units[uIdx].lessons[lIdx];
+            const unit = course.units[uIdx];
+            lessonAnswers = {}; // Reset local answers for this lesson view
+            
+            inner.innerHTML = \`
+                <div class="mb-16">
+                  <span class="text-[9px] font-black text-cyan-500 uppercase tracking-[0.3em] mb-4 block bg-cyan-500/10 px-4 py-2 rounded-full border border-cyan-500/20 w-fit">\${unit.title}</span>
+                  <h1 class="text-4xl md:text-5xl font-black uppercase text-white tracking-tighter leading-tight">\${lesson.title}</h1>
+                </div>
+                <div id="lesson-blocks" class="space-y-12"></div>
+                
+                <div id="results-area" class="hidden results-panel animate-in slide-in-from-bottom-8 duration-700">
+                    <div class="flex flex-col md:flex-row items-center justify-between gap-10">
+                        <div class="text-center md:text-left">
+                            <p class="text-[9px] font-black text-cyan-500 uppercase tracking-widest mb-2">Desempeño en Lección</p>
+                            <h2 class="text-3xl font-black text-white uppercase tracking-tighter">Resultados del Test</h2>
+                        </div>
+                        <div class="flex items-center gap-10">
+                            <div class="text-center">
+                                <div id="score-percent" class="text-5xl font-black tracking-tighter text-cyan-400">0%</div>
+                                <p class="text-[7px] font-black text-slate-600 uppercase mt-1 tracking-widest">Puntaje</p>
+                            </div>
+                            <div class="h-12 w-px bg-white/10 hidden md:block"></div>
+                            <div class="text-center">
+                                <div id="score-raw" class="text-3xl font-black text-white">0/0</div>
+                                <p class="text-[7px] font-black text-slate-600 uppercase mt-1 tracking-widest">Aciertos</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-24 pt-16 border-t border-white/5 flex flex-col items-center pb-40">
+                    <button id="final-btn" onclick="toggleComplete('\${lesson.id}')" class="final-btn pending shadow-2xl">
+                        Finalizar Lección
+                    </button>
+                    <p class="mt-6 text-slate-600 text-[8px] font-black uppercase tracking-[0.3em]">Marca esta lección para registrar tu progreso</p>
+                </div>
+            \`;
+            
+            const blocksContainer = document.getElementById('lesson-blocks');
+            const finalBtn = document.getElementById('final-btn');
+            
+            if (completedSet.has(lesson.id)) {
+                finalBtn.innerText = '✓ LECCIÓN COMPLETADA';
+                finalBtn.className = 'final-btn completed shadow-2xl';
+            }
+
+            lesson.blocks.forEach((b, bIdx) => {
+                const isTest = b.type === 'test';
+                const isActivity = b.type === 'activity';
+                
+                let html = \`
+                    <div class="card">
+                        \${b.weight > 0 ? \`<div class="weight-badge \${isTest ? 'test' : ''}">\${isTest ? 'Test' : 'Act'}: \${b.weight} PTS</div>\` : ''}
+                        <h3 class="text-white font-black mb-8 uppercase text-[10px] tracking-[0.3em] flex items-center gap-3">
+                          <span class="text-lg opacity-80">\${isTest ? '⚡' : isActivity ? '🛠️' : '📖'}</span>
+                          \${b.title}
+                        </h3>
+                        <div class="whitespace-pre-line text-slate-300 leading-relaxed font-medium text-base mb-10">\${b.content}</div>\`;
+                
+                if (isTest && b.testQuestions) {
+                    html += '<div class="mt-12 space-y-12 border-t border-white/5 pt-12">';
+                    b.testQuestions.forEach((q, qIdx) => {
+                        html += \`
+                            <div id="q-\${bIdx}-\${qIdx}">
+                                <p class="text-white font-black mb-6 text-lg tracking-tight leading-tight">\${q.question}</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    \${q.options.map((opt, oIdx) => \`
+                                        <button class="option-btn" onclick="checkAnswer(this, \${uIdx}, \${lIdx}, \${bIdx}, \${qIdx}, \${oIdx}, \${q.correctAnswerIndex}, '\${q.feedback.replace(/'/g, "\\\\'")}')">
+                                            \${opt}
+                                        </button>
+                                    \`).join('')}
+                                </div>
+                                <div id="feedback-\${bIdx}-\${qIdx}" class="mt-4 p-5 rounded-2xl text-[10px] font-bold hidden bg-black/40 text-slate-400 italic border border-white/5 animate-in slide-in-from-top-2"></div>
+                            </div>\`;
+                    });
+                    html += '</div>';
+                }
+
+                if (isActivity) {
+                    const blockKey = \`\${uIdx}-\${lIdx}-\${bIdx}\`;
+                    html += \`
+                        <div class="mt-10 p-8 md:p-12 bg-black/40 rounded-[3rem] border border-cyan-500/10">
+                            <h4 class="text-cyan-500 font-black uppercase text-[9px] tracking-[0.4em] mb-10">Buzón de Entrega Digital</h4>
+                            <div class="grid md:grid-cols-2 gap-6 mb-8">
+                                <div>
+                                    <label class="label-style">Nombre del Alumno</label>
+                                    <input type="text" id="name-\${blockKey}" class="input-field" value="\${safeGet('student_name') || ''}" onchange="saveProfile(this, 'student_name')" placeholder="Apellido Nombre">
+                                </div>
+                                <div>
+                                    <label class="label-style">Número de Control</label>
+                                    <input type="text" id="control-\${blockKey}" class="input-field" value="\${safeGet('student_control') || ''}" onchange="saveProfile(this, 'student_control')" placeholder="Ej: 21010000">
+                                </div>
+                            </div>
+                            <div class="mb-8">
+                                <label class="label-style">Desarrollo de la Solución / Respuesta</label>
+                                <textarea id="ans-\${blockKey}" class="input-field min-h-[180px]" placeholder="Escribe aquí tu análisis detallado..."></textarea>
+                            </div>
+                            <div class="mb-10">
+                                <label class="label-style">Evidencia Visual (Foto o Captura)</label>
+                                <div class="file-drop" onclick="document.getElementById('file-\${blockKey}').click()">
+                                    <input type="file" id="file-\${blockKey}" class="hidden" accept="image/*" onchange="handleFileUpload(this, '\${blockKey}')">
+                                    <div class="text-3xl mb-3 opacity-30">📷</div>
+                                    <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Haz clic para cargar evidencia</p>
+                                    <img id="preview-\${blockKey}" class="preview-img mx-auto" />
+                                </div>
+                            </div>
+                            <button onclick="downloadSubmission('\${blockKey}', '\${b.title}', '\${lesson.title}')" class="w-full py-6 bg-cyan-500 text-slate-950 font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl hover:bg-cyan-400 transition-all shadow-xl active:scale-95">
+                                Generar Paquete de Entrega (.JSON)
+                            </button>
+                        </div>\`;
+                }
+                
+                html += '</div>';
+                const div = document.createElement('div');
+                div.innerHTML = html;
+                blocksContainer.appendChild(div);
+            });
+            document.getElementById('content').scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        window.toggleComplete = (lessonId) => {
+            const btn = document.getElementById('final-btn');
+            if (completedSet.has(lessonId)) {
+                completedSet.delete(lessonId);
+                btn.innerText = 'Finalizar Lección';
+                btn.className = 'final-btn pending shadow-2xl';
+            } else {
+                completedSet.add(lessonId);
+                btn.innerText = '✓ LECCIÓN COMPLETADA';
+                btn.className = 'final-btn completed shadow-2xl';
+            }
+            safeSet('completed_lessons', JSON.stringify(Array.from(completedSet)));
+            updateSidebar();
+        };
+
+        window.checkAnswer = (btn, uIdx, lIdx, bIdx, qIdx, oIdx, correctIdx, feedback) => {
+            const lesson = course.units[uIdx].lessons[lIdx];
+            const blockKey = \`\${bIdx}-\${qIdx}\`;
+            if (lessonAnswers[blockKey] !== undefined) return;
+            
+            lessonAnswers[blockKey] = oIdx;
+            
+            const container = document.getElementById(\`q-\${bIdx}-\${qIdx}\`);
+            container.querySelectorAll('.option-btn').forEach((b, idx) => {
+                b.disabled = true;
+                if (idx === correctIdx) b.classList.add('correct');
+                else if (idx === oIdx) b.classList.add('wrong');
+                else b.style.opacity = '0.3';
+            });
+            
+            const fd = document.getElementById(\`feedback-\${bIdx}-\${qIdx}\`);
+            fd.innerText = \`Retro: \${feedback}\`;
+            fd.classList.remove('hidden');
+
+            // Actualizar tablero de resultados
+            const stats = calculateScore(lesson);
+            if (stats.total > 0) {
+                document.getElementById('results-area').classList.remove('hidden');
+                document.getElementById('score-raw').innerText = \`\${stats.correct}/\${stats.total}\`;
+                const percent = Math.round((stats.correct / stats.total) * 100);
+                const scoreEl = document.getElementById('score-percent');
+                scoreEl.innerText = \`\${percent}%\`;
+                
+                if (percent >= 70) scoreEl.className = "text-5xl font-black tracking-tighter text-emerald-400";
+                else if (percent >= 40) scoreEl.className = "text-5xl font-black tracking-tighter text-amber-400";
+                else scoreEl.className = "text-5xl font-black tracking-tighter text-red-400";
+            }
+        };
+
+        window.saveProfile = (el, key) => {
+            safeSet(key, el.value);
+            document.querySelectorAll(\`input[onchange*="\${key}"]\`).forEach(input => input.value = el.value);
+        };
+
+        window.handleFileUpload = (el, key) => {
+            const file = el.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 1200;
+                    let w = img.width, h = img.height;
+                    if (w > h) { if (w > MAX) { h *= MAX/w; w = MAX; } }
+                    else { if (h > MAX) { w *= MAX/h; h = MAX; } }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const b64 = canvas.toDataURL('image/jpeg', 0.6);
+                    attachedFiles[key] = b64;
+                    const pre = document.getElementById(\`preview-\${key}\`);
+                    pre.src = b64; pre.style.display = 'block';
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.downloadSubmission = (key, act, les) => {
+            const n = document.getElementById(\`name-\${key}\`).value;
+            const c = document.getElementById(\`control-\${key}\`).value;
+            const a = document.getElementById(\`ans-\${key}\`).value;
+            if (!n || !c || !a) return alert("Error: Los campos Nombre, Control y Desarrollo son obligatorios.");
+            const s = { studentName: n, studentControlNumber: c, lessonTitle: les, activityTitle: act, content: a, attachment: attachedFiles[key] || null, timestamp: Date.now() };
+            const blob = new Blob([JSON.stringify(s)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const l = document.createElement('a');
+            l.href = url; l.download = \`Entrega_\${c}_\${act.replace(/\\s+/g, '_')}.json\`; l.click();
+        };
+
+        updateSidebar();
+        if (course.units.length > 0) showLesson(0, 0);
+    </script>
+</body>
+</html>`;
+}
 
 export default CourseViewer;

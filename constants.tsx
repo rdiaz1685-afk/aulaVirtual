@@ -2,22 +2,21 @@
 import { Type } from "@google/genai";
 
 export const SKELETON_PROMPT = (prefs: any) => `
-Actúa como un Diseñador Instruccional Senior del TecNM.
+Actúa como un Auditor de Programas Académicos del TecNM. 
+Tu misión es TRANSCRIBIR con exactitud absoluta el temario de la materia: "${prefs.topic}".
 
-OBJETIVO:
-Diseñar el TEMARIO ESTRUCTURAL para la materia: "${prefs.topic}".
-Nivel: ${prefs.level}.
+REGLAS DE RIGOR INSTITUCIONAL (INCUMPLIMIENTO NO PERMITIDO):
+1. UNIDADES INDEPENDIENTES: Si el Programa Nacional define 6 unidades, DEBES generar 6 unidades en el JSON. Está PROHIBIDO combinar unidades (ej. no juntar Unidad 1 y 2).
+2. ORDEN NUMÉRICO ESTRICTO: Sigue la secuencia 1, 2, 3... del temario original.
+3. TÍTULOS LITERALES: Los nombres de las unidades deben ser idénticos a los del documento cargado.
+4. DETECCIÓN DE TABLA DE CONTENIDO: Prioriza las imágenes/PDF proporcionados. Identifica la lista de unidades y refléjala sin omisiones.
 
-INSTRUCCIONES CRÍTICAS (LEER CUIDADOSAMENTE):
-1. Si te he proporcionado IMÁGENES adjuntas, esas imágenes son el "Temario Oficial/Programa de Estudios".
-2. **DEBES EXTRAER** los nombres de las unidades y temas EXACTAMENTE como aparecen en las imágenes.
-3. NO INVENTES temas si están en las imágenes. Prioridad absoluta al contenido visual.
-4. Si las imágenes muestran "Unidad 1: Sistemas Numéricos", TU DEBES generar "Unidad 1: Sistemas Numéricos", no otra cosa.
-5. Si NO hay imágenes, propón un temario estándar de ingeniería.
+CONTEXTO DEL CURSO:
+- Nivel: ${prefs.level}
+- Carrera: ${prefs.profile}
+- Objetivo: Cumplir con la instrumentación didáctica oficial.
 
-REGLAS DE SALIDA:
-- Genera la estructura en JSON.
-- Idioma: Español.
+SALIDA: JSON puro. Si no hay temario en las imágenes, usa el programa estándar vigente del TecNM para esa materia, pero manteniendo la estructura de unidades separadas.
 `;
 
 export const SKELETON_SCHEMA = {
@@ -26,13 +25,55 @@ export const SKELETON_SCHEMA = {
     title: { type: Type.STRING },
     subjectCode: { type: Type.STRING },
     description: { type: Type.STRING },
+    instrumentation: {
+      type: Type.OBJECT,
+      properties: {
+        characterization: { type: Type.STRING },
+        didacticIntent: { type: Type.STRING },
+        subjectCompetency: { type: Type.STRING },
+        analysisByUnit: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              unitTitle: { type: Type.STRING },
+              competencyDescription: { type: Type.STRING },
+              indicatorsOfReach: { type: Type.STRING },
+              hours: { type: Type.STRING }
+            }
+          }
+        },
+        evaluationMatrix: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              evidence: { type: Type.STRING },
+              percentage: { type: Type.NUMBER },
+              indicators: { type: Type.STRING },
+              evaluationType: { type: Type.STRING }
+            }
+          }
+        },
+        calendar: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              week: { type: Type.NUMBER },
+              planned: { type: Type.STRING }
+            }
+          }
+        }
+      }
+    },
     units: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
           title: { type: Type.STRING },
-          summary: { type: Type.STRING, description: "Breve lista de subtemas copiados del temario oficial" }
+          summary: { type: Type.STRING }
         }
       }
     }
@@ -41,22 +82,18 @@ export const SKELETON_SCHEMA = {
 };
 
 export const UNIT_CONTENT_PROMPT = (unitTitle: string, unitSummary: string, level: string) => `
-Eres un experto en Pedagogía de Ingeniería del TecNM. 
-Desarrolla el contenido de la unidad: "${unitTitle}" (${unitSummary}).
+Experto en Ingeniería TecNM. Desarrolla el contenido técnico para la unidad específica: "${unitTitle}".
 
-REGLAS DE ORO DE ESTRUCTURA (OBLIGATORIO):
-1. **MÍNIMO 4 ACTIVIDADES:** Debes generar AL MENOS 4 bloques de tipo 'activity' distribuidos en las lecciones.
-   - Si la unidad es corta, divide las prácticas en partes más pequeñas para cumplir con el mínimo de 4.
-   - RECUERDA: Las actividades valen el 90% de la calificación, necesitamos varias para promediar.
-2. **TEST EN CADA LECCIÓN:** CADA lección debe finalizar OBLIGATORIAMENTE con un bloque tipo 'test' (Examen rápido).
-   - Los tests valen el 10% de la calificación.
+REQUISITOS DE CONTENIDO:
+1. Nivel de profundidad: ${level}.
+2. Genera 2 lecciones por unidad.
+3. Cada lección debe incluir: 
+   - 'theory': Explicación técnica exhaustiva.
+   - 'example': Ejercicio resuelto paso a paso.
+   - 'activity': Actividad práctica (40 pts) con rúbrica detallada.
+   - 'test': Evaluación rápida (10 pts).
 
-TIPOS DE BLOQUE:
-- 'theory': Teoría explicativa.
-- 'activity': Práctica, Cuadro Comparativo, Mapa Mental, Resolución de Problemas. SIEMPRE incluye 'rubric'.
-- 'test': Preguntas de opción múltiple con retroalimentación.
-
-No seas perezoso. El alumno necesita práctica constante.
+No utilices lenguaje genérico. Usa terminología propia de la asignatura.
 `;
 
 export const UNIT_CONTENT_SCHEMA = {
@@ -76,6 +113,18 @@ export const UNIT_CONTENT_SCHEMA = {
                 type: { type: Type.STRING, enum: ['theory', 'example', 'activity', 'test'] },
                 title: { type: Type.STRING },
                 content: { type: Type.STRING },
+                weight: { type: Type.NUMBER },
+                rubric: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      criterion: { type: Type.STRING },
+                      points: { type: Type.NUMBER },
+                      description: { type: Type.STRING }
+                    }
+                  }
+                },
                 testQuestions: {
                   type: Type.ARRAY,
                   items: {
@@ -85,43 +134,25 @@ export const UNIT_CONTENT_SCHEMA = {
                       options: { type: Type.ARRAY, items: { type: Type.STRING } },
                       correctAnswerIndex: { type: Type.INTEGER },
                       feedback: { type: Type.STRING }
-                    },
-                    required: ["question", "options", "correctAnswerIndex", "feedback"]
-                  }
-                },
-                rubric: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      criterion: { type: Type.STRING },
-                      points: { type: Type.NUMBER },
-                      description: { type: Type.STRING }
-                    },
-                    required: ["criterion", "points", "description"]
+                    }
                   }
                 }
-              },
-              required: ["type", "title", "content"]
+              }
             }
           }
-        },
-        required: ["title", "blocks"]
+        }
       }
     }
-  },
-  required: ["lessons"]
+  }
 };
 
 export const GRADE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    score: { type: Type.NUMBER, description: "Calificación del 0 al 100" },
-    authenticityScore: { type: Type.NUMBER, description: "Probabilidad de ser humano vs IA (0-100)" },
-    generalFeedback: { type: Type.STRING, description: "Retroalimentación general" },
-    aiDetectionReason: { type: Type.STRING, description: "Explicación técnica de sospecha de IA o validación humana" },
+    score: { type: Type.NUMBER },
+    authenticityScore: { type: Type.NUMBER },
+    generalFeedback: { type: Type.STRING },
     strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
     improvementAreas: { type: Type.ARRAY, items: { type: Type.STRING } }
-  },
-  required: ["score", "authenticityScore", "generalFeedback", "aiDetectionReason", "strengths", "improvementAreas"]
+  }
 };
